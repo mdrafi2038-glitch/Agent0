@@ -518,7 +518,7 @@ if not root_gradle.exists():
     raise SystemExit("Could not find root Gradle build file for Google Services plugin")
 root_text = root_gradle.read_text()
 if "com.google.gms.google-services" not in root_text:
-    plugin_line = '    id("com.google.gms.google-services") version "4.4.2" apply false\\n' if root_gradle.suffix == ".kts" else "    id 'com.google.gms.google-services' version '4.4.2' apply false\\n"
+    plugin_line = '    id("com.google.gms.google-services") version "4.4.2" apply false\n' if root_gradle.suffix == ".kts" else "    id 'com.google.gms.google-services' version '4.4.2' apply false\n"
     close = root_text.find("}")
     if close < 0:
         raise SystemExit("Could not find root plugins block")
@@ -534,7 +534,7 @@ if "com.google.gms.google-services" not in module_text:
     close = module_text.find("}", pos)
     if close < 0:
         raise SystemExit("Could not find end of app module plugins block")
-    plugin_line = '    id("com.google.gms.google-services")\\n' if module_gradle.suffix == ".kts" else "    id 'com.google.gms.google-services'\\n"
+    plugin_line = '    id("com.google.gms.google-services")\n' if module_gradle.suffix == ".kts" else "    id 'com.google.gms.google-services'\n"
     module_text = module_text[:close] + plugin_line + module_text[close:]
     module_gradle.write_text(module_text)
 
@@ -566,7 +566,7 @@ firebase_config = {
     "configuration_version": "1"
 }
 import json
-(app / "google-services.json").write_text(json.dumps(firebase_config, indent=2) + "\\n")
+(app / "google-services.json").write_text(json.dumps(firebase_config, indent=2) + "\n")
 
 for path in (main, admin):
     content = path.read_text()
