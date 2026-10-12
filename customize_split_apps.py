@@ -517,7 +517,7 @@ root_gradle = root_gradle_kts if root_gradle_kts.exists() else root_gradle_groov
 if not root_gradle.exists():
     raise SystemExit("Could not find root Gradle build file for Google Services plugin")
 root_text = root_gradle.read_text()
-if "com.google.gms.google-services" not in root_text:
+if not re.search(r"google[.-]?services", root_text, re.I):
     plugin_line = '    id("com.google.gms.google-services") version "4.4.2" apply false\n' if root_gradle.suffix == ".kts" else "    id 'com.google.gms.google-services' version '4.4.2' apply false\n"
     close = root_text.find("}")
     if close < 0:
@@ -526,7 +526,7 @@ if "com.google.gms.google-services" not in root_text:
     root_gradle.write_text(root_text)
 
 module_text = module_gradle.read_text()
-if "com.google.gms.google-services" not in module_text:
+if not re.search(r"google[.-]?services", module_text, re.I):
     plugin_marker = 'plugins {'
     pos = module_text.find(plugin_marker)
     if pos < 0:
