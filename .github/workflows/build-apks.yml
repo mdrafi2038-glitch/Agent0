@@ -94,8 +94,22 @@ jobs:
           fi
           cp "$CLIENT_APK" release-output/PersonalAgent-Client-debug.apk
           cp "$ADMIN_APK" release-output/PersonalAgent-Admin-debug.apk
+
+          # Verify APK signatures and ensure the two APKs are separate packages.
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          "$APKSIGNER" verify --verbose release-output/PersonalAgent-Client-debug.apk
+          "$APKSIGNER" verify --verbose release-output/PersonalAgent-Admin-debug.apk
+          CLIENT_ID="$("$AAPT" dump badging release-output/PersonalAgent-Client-debug.apk | sed -n "s/^package: name='\\([^']*\\)'.*/\\1/p" | head -1)"
+          ADMIN_ID="$("$AAPT" dump badging release-output/PersonalAgent-Admin-debug.apk | sed -n "s/^package: name='\\([^']*\\)'.*/\\1/p" | head -1)"
+          test -n "$CLIENT_ID" && test -n "$ADMIN_ID"
+          test "$CLIENT_ID" != "$ADMIN_ID"
+          echo "Client package: $CLIENT_ID"
+          echo "Admin package: $ADMIN_ID"
+
           # Package customized source as a ZIP, excluding caches/build outputs.
           (cd "$PROJECT_DIR" && zip -qr "$GITHUB_WORKSPACE/release-output/source/PersonalAgent-Updated-Source.zip" . -x '*/build/*' '*/.gradle/*' '.gradle/*' '*/.idea/*')
+          unzip -tq release-output/source/PersonalAgent-Updated-Source.zip
           (cd release-output && sha256sum PersonalAgent-Client-debug.apk PersonalAgent-Admin-debug.apk source/PersonalAgent-Updated-Source.zip > SHA256SUMS.txt)
           ls -lh release-output/PersonalAgent-Client-debug.apk release-output/PersonalAgent-Admin-debug.apk release-output/source/PersonalAgent-Updated-Source.zip
 
