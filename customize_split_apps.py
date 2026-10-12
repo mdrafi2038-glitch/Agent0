@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 import sys
 
 root = Path(sys.argv[1]).resolve()
@@ -56,17 +57,13 @@ s = s.replace('''            android:name=".admin.AdminMainActivity"
 manifest.write_text(s)
 
 s = gradle.read_text()
-needle = '''  defaultConfig {
-    applicationId = "com.aistudio.privateagent.zqpxlt"
-    minSdk = 29
-    targetSdk = 36
-    versionCode = 1
-    versionName = "1.0"
-
-    testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-  }
-'''
-replacement = needle + '''
+if 'flavorDimensions += "appRole"' not in s:
+    match = re.search(r'  defaultConfig \\{.*?^  \\}', s, re.S | re.M)
+    if not match:
+        raise SystemExit("Could not find app defaultConfig block")
+    default_block = re.sub(r'minSdk\\s*=\\s*\\d+', 'minSdk = 29', match.group(0))
+    flavors = '''
+  
   flavorDimensions += "appRole"
   productFlavors {
     create("client") {
@@ -83,10 +80,10 @@ replacement = needle + '''
     }
   }
 '''
-if 'flavorDimensions += "appRole"' not in s:
-    if needle not in s:
-        raise SystemExit("Could not find app defaultConfig block")
-    s = s.replace(needle, replacement)
+    s = s[:match.start()] + default_block + flavors + s[match.end():]
+else:
+    # Preserve a minimum supported version of Android 10 even on older ZIP revisions.
+    s = re.sub(r'minSdk\\s*=\\s*\\d+', 'minSdk = 29', s, count=1)
 gradle.write_text(s)
 
 for path in (main, admin):
