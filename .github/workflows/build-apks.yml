@@ -94,10 +94,10 @@ jobs:
           fi
           cp "$CLIENT_APK" release-output/PersonalAgent-Client-debug.apk
           cp "$ADMIN_APK" release-output/PersonalAgent-Admin-debug.apk
-          # Package the customized source, excluding caches and build outputs.
-          tar -C "$PROJECT_DIR" --exclude='**/build' --exclude='.gradle' --exclude='.idea' -czf release-output/source/PersonalAgent-Updated-Source.tar.gz .
-          (cd release-output && sha256sum PersonalAgent-Client-debug.apk PersonalAgent-Admin-debug.apk source/PersonalAgent-Updated-Source.tar.gz > SHA256SUMS.txt)
-          ls -lh release-output/PersonalAgent-Client-debug.apk release-output/PersonalAgent-Admin-debug.apk release-output/source/PersonalAgent-Updated-Source.tar.gz
+          # Package customized source as a ZIP, excluding caches/build outputs.
+          (cd "$PROJECT_DIR" && zip -qr "$GITHUB_WORKSPACE/release-output/source/PersonalAgent-Updated-Source.zip" . -x '*/build/*' '*/.gradle/*' '.gradle/*' '*/.idea/*')
+          (cd release-output && sha256sum PersonalAgent-Client-debug.apk PersonalAgent-Admin-debug.apk source/PersonalAgent-Updated-Source.zip > SHA256SUMS.txt)
+          ls -lh release-output/PersonalAgent-Client-debug.apk release-output/PersonalAgent-Admin-debug.apk release-output/source/PersonalAgent-Updated-Source.zip
 
       - name: Upload Client APK separately
         uses: actions/upload-artifact@v4
@@ -119,7 +119,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: PersonalAgent-Updated-Source
-          path: release-output/source/PersonalAgent-Updated-Source.tar.gz
+          path: release-output/source/PersonalAgent-Updated-Source.zip
           if-no-files-found: error
           retention-days: 14
 
