@@ -576,7 +576,7 @@ for path in (main, admin):
 print(f"Customized split Client/Admin flavors in {root}")
 
 
-// Persistent paired-client command delivery. Commands are queued in Firebase and
+# Persistent paired-client command delivery. Commands are queued in Firebase and
 // received by the Client foreground service. Only non-destructive, owner-approved
 // actions are remotely executable; power-off/wipe/camera capture are intentionally excluded.
 service_path = app / "src/main/java/com/example/service/AgentService.kt"
@@ -738,7 +738,7 @@ rules_path.write_text('''{
 ''')
 
 
-// Email/password Firebase account sign-in so the same account can be used on
+# Email/password Firebase account sign-in so the same account can be used on
 // both apps and its Firebase UID survives process restarts/reinstalls.
 pair_repo = app / "src/main/java/com/example/manager/PairingRepository.kt"
 if pair_repo.exists():
