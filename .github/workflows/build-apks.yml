@@ -1,0 +1,81 @@
+name: Build Personal Agent APKs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'private-agent.zip'
+      - '.github/workflows/build-apks.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Extract uploaded project ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f private-agent.zip || { echo "private-agent.zip was not found at repository root"; exit 1; }
+          mkdir -p extracted
+          unzip -q private-agent.zip -d extracted
+          PROJECT_DIR="$(find extracted -type f -name settings.gradle -print -quit | xargs -r dirname)"
+          if [ -z "$PROJECT_DIR" ]; then
+            PROJECT_DIR="$(find extracted -type f -name settings.gradle.kts -print -quit | xargs -r dirname)"
+          fi
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "Could not find settings.gradle or settings.gradle.kts inside the ZIP."
+            echo "ZIP contents:"
+            find extracted -maxdepth 4 -type f | head -200
+            exit 1
+          fi
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Android project root: $PROJECT_DIR"
+          ls -la "$PROJECT_DIR"
+
+      - name: Set up Gradle 8.7
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Build debug APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle -p "$PROJECT_DIR" assembleDebug --stacktrace
+
+      - name: Collect APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p apk-output
+          find "$PROJECT_DIR" -type f -path '*/build/outputs/apk/*/*.apk' -exec cp {} apk-output/ \;
+          if ! find apk-output -type f -name '*.apk' | grep -q .; then
+            echo "Build finished but no APK files were found."
+            exit 1
+          fi
+          ls -lh apk-output
+
+      - name: Upload APK artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: PersonalAgent-debug-APKs
+          path: apk-output/*.apk
+          if-no-files-found: error
+          retention-days: 14
