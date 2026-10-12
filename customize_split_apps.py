@@ -482,7 +482,7 @@ if panel_path.exists():
 # Ensure Firebase Auth/Realtime Database dependencies are present even if the ZIP's
 # version-catalog aliases differ from the names expected by an earlier script revision.
 g = gradle.read_text()
-if 'com.google.firebase:firebase-auth' not in g:
+if 'implementation("com.google.firebase:firebase-auth")' not in g or 'implementation("com.google.firebase:firebase-database")' not in g:
     dep_match = re.search(r'(?m)^dependencies\\s*\\{', g)
     if not dep_match:
         raise SystemExit("Could not find app dependencies block to add Firebase libraries")
