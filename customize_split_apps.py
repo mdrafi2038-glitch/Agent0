@@ -74,14 +74,12 @@ replacement = needle + '''
       applicationIdSuffix = ".client"
       manifestPlaceholders["clientActivityEnabled"] = "true"
       manifestPlaceholders["adminActivityEnabled"] = "false"
-      resValue("string", "app_name", "Personal Agent Client")
     }
     create("admin") {
       dimension = "appRole"
       applicationIdSuffix = ".admin"
       manifestPlaceholders["clientActivityEnabled"] = "false"
       manifestPlaceholders["adminActivityEnabled"] = "true"
-      resValue("string", "app_name", "Personal Agent Admin")
     }
   }
 '''
