@@ -483,7 +483,7 @@ if panel_path.exists():
 # version-catalog aliases differ from the names expected by an earlier script revision.
 g = gradle.read_text()
 if 'implementation("com.google.firebase:firebase-auth")' not in g or 'implementation("com.google.firebase:firebase-database")' not in g:
-    dep_match = re.search(r'(?m)^dependencies\\s*\\{', g)
+    dep_match = re.search(r'(?m)^\\s*dependencies\\s*\\{', g)
     if not dep_match:
         raise SystemExit("Could not find app dependencies block to add Firebase libraries")
     open_brace = g.find("{", dep_match.start())
