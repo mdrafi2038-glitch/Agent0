@@ -422,6 +422,56 @@ for screen_path, is_admin in [
 Do not use public read/write rules. Firebase configuration and rules must be deployed before cross-phone pairing works.
 """)
 
+
+# Publish the consented client to the Admin device list; keep only basic identity metadata.
+sec_path = app / "src/main/java/com/example/manager/SecurityRepository.kt"
+if sec_path.exists():
+    sec = sec_path.read_text()
+    if "fun setPairedDevice(" not in sec:
+        sec = sec.replace(
+            "    fun addCommand(command: AdminCommand) {",
+            """    fun setPairedDevice(device: ManagedDevice) {
+        _managedDevices.value = listOf(device)
+    }
+
+    fun addCommand(command: AdminCommand) {"""
+        )
+        sec_path.write_text(sec)
+
+panel_path = app / "src/main/java/com/example/ui/components/PairingPanel.kt"
+if panel_path.exists():
+    panel_source = panel_path.read_text()
+    if "import com.example.manager.SecurityRepository" not in panel_source:
+        panel_source = panel_source.replace(
+            "import com.example.manager.PairingRepository\n",
+            "import com.example.manager.PairingRepository\n"
+            "import com.example.manager.SecurityRepository\n"
+            "import com.example.model.ManagedDevice\n"
+        )
+    panel_source = panel_source.replace(
+        'if (!snap.exists() || System.currentTimeMillis() - created > 600000L) {',
+        'if (!snap.exists() || (snap.child("approved").getValue(Boolean::class.java) != true && System.currentTimeMillis() - created > 600000L)) {'
+    )
+    panel_source = panel_source.replace(
+        'if (paired && isAdmin) status = "Connected and approved: " + deviceName',
+        '''if (paired && isAdmin) {
+                    status = "Connected and approved: " + deviceName
+                    SecurityRepository.setPairedDevice(
+                        ManagedDevice(
+                            deviceId = activeToken,
+                            deviceName = deviceName,
+                            model = snap.child("model").getValue(String::class.java) ?: deviceName,
+                            osVersion = snap.child("osVersion").getValue(String::class.java) ?: "Android",
+                            batteryPercent = 0,
+                            isOnline = true,
+                            isProtected = false,
+                            lastSeenTimestamp = System.currentTimeMillis()
+                        )
+                    )
+                }'''
+    )
+    panel_path.write_text(panel_source)
+
 for path in (main, admin):
     content = path.read_text()
     for marker in ("open_admin_app_btn", "open_client_app_btn", "Switch to Admin App Button", "Switch to Client App"):
