@@ -220,30 +220,34 @@ object PairingRepository {
         }
         signIn { uid, err ->
             if (uid == null) { done(null, err); return@signIn }
-            val ref = FirebaseDatabase.getInstance().reference.child(ROOT).child(token)
-            ref.get().addOnSuccessListener { snap ->
-                val created = snap.child("createdAt").getValue(Long::class.java) ?: 0L
-                if (!snap.exists() || System.currentTimeMillis() - created > EXPIRY) {
-                    done(null, "Code invalid or expired. Generate a new one on Client."); return@addOnSuccessListener
-                }
-                if (snap.child("approved").getValue(Boolean::class.java) == true) {
-                    done(null, "This code has already been used."); return@addOnSuccessListener
-                }
-                ref.child("adminUid").setValue(uid).addOnSuccessListener {
-                    ref.child("adminRequestedAt").setValue(System.currentTimeMillis())
-                        .addOnSuccessListener { done(token, null) }
-                        .addOnFailureListener { done(null, it.message ?: "Pair request failed") }
-                }.addOnFailureListener { done(null, it.message ?: "Pair request failed") }
-            }.addOnFailureListener { done(null, it.message ?: "Database read failed; check rules") }
+            try {
+                val ref = FirebaseDatabase.getInstance().reference.child(ROOT).child(token)
+                ref.get().addOnSuccessListener { snap ->
+                    val created = snap.child("createdAt").getValue(Long::class.java) ?: 0L
+                    if (!snap.exists() || System.currentTimeMillis() - created > EXPIRY) {
+                        done(null, "Code invalid or expired. Generate a new one on Client."); return@addOnSuccessListener
+                    }
+                    if (snap.child("approved").getValue(Boolean::class.java) == true) {
+                        done(null, "This code has already been used."); return@addOnSuccessListener
+                    }
+                    ref.child("adminUid").setValue(uid).addOnSuccessListener {
+                        ref.child("adminRequestedAt").setValue(System.currentTimeMillis())
+                            .addOnSuccessListener { done(token, null) }
+                            .addOnFailureListener { done(null, it.message ?: "Pair request failed") }
+                    }.addOnFailureListener { done(null, it.message ?: "Pair request failed") }
+                }.addOnFailureListener { done(null, it.message ?: "Database read failed; check rules") }
+            } catch (e: Exception) { done(null, e.message ?: "Firebase database unavailable") }
         }
     }
 
     fun approve(token: String, done: (String?) -> Unit) = signIn { uid, err ->
         if (uid == null) { done(err); return@signIn }
-        FirebaseDatabase.getInstance().reference.child(ROOT).child(token).updateChildren(
-            mapOf("approved" to true, "pairedClientUid" to uid, "pairedAt" to System.currentTimeMillis())
-        ).addOnSuccessListener { done(null) }
-            .addOnFailureListener { done(it.message ?: "Approval failed") }
+        try {
+            FirebaseDatabase.getInstance().reference.child(ROOT).child(token).updateChildren(
+                mapOf("approved" to true, "pairedClientUid" to uid, "pairedAt" to System.currentTimeMillis())
+            ).addOnSuccessListener { done(null) }
+                .addOnFailureListener { done(it.message ?: "Approval failed") }
+        } catch (e: Exception) { done(e.message ?: "Firebase database unavailable") }
     }
 
     fun listen(token: String, changed: (DataSnapshot) -> Unit, failed: (String) -> Unit): ValueEventListener? {
