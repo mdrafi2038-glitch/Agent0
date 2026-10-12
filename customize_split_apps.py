@@ -58,10 +58,10 @@ manifest.write_text(s)
 
 s = gradle.read_text()
 if 'flavorDimensions += "appRole"' not in s:
-    match = re.search(r'  defaultConfig \\{.*?^  \\}', s, re.S | re.M)
+    match = re.search(r'  defaultConfig \{.*?^  \}', s, re.S | re.M)
     if not match:
         raise SystemExit("Could not find app defaultConfig block")
-    default_block = re.sub(r'minSdk\\s*=\\s*\\d+', 'minSdk = 29', match.group(0))
+    default_block = re.sub(r'minSdk\s*=\s*\d+', 'minSdk = 29', match.group(0))
     flavors = '''
   
   flavorDimensions += "appRole"
@@ -83,7 +83,7 @@ if 'flavorDimensions += "appRole"' not in s:
     s = s[:match.start()] + default_block + flavors + s[match.end():]
 else:
     # Preserve a minimum supported version of Android 10 even on older ZIP revisions.
-    s = re.sub(r'minSdk\\s*=\\s*\\d+', 'minSdk = 29', s, count=1)
+    s = re.sub(r'minSdk\s*=\s*\d+', 'minSdk = 29', s, count=1)
 gradle.write_text(s)
 
 for path in (main, admin):
