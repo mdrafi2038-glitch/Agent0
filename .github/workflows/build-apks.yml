@@ -61,6 +61,20 @@ jobs:
           echo "Android project root: $PROJECT_DIR"
           ls -la "$PROJECT_DIR"
 
+      - name: Ensure debug signing keystore exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f extracted/debug.keystore ]; then
+            keytool -genkeypair -v \
+              -keystore extracted/debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
       - name: Set up Gradle 9.3.1
         uses: gradle/actions/setup-gradle@v4
         with:
