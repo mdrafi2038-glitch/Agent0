@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'private-agent.zip'
+      - 'customize_split_apps.py'
       - '.github/workflows/build-apks.yml'
   workflow_dispatch:
 
@@ -61,6 +62,13 @@ jobs:
           echo "Android project root: $PROJECT_DIR"
           ls -la "$PROJECT_DIR"
 
+      - name: Split Client and Admin app experiences
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 customize_split_apps.py "$PROJECT_DIR"
+          echo "Configured separate Client and Admin flavors."
+
       - name: Ensure debug signing keystore exists
         shell: bash
         run: |
@@ -84,7 +92,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gradle -p "$PROJECT_DIR" assembleDebug --stacktrace
+          gradle -p "$PROJECT_DIR" assembleClientDebug assembleAdminDebug --stacktrace
 
       - name: Collect APKs
         shell: bash
