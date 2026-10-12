@@ -68,13 +68,13 @@ if 'flavorDimensions += "appRole"' not in s:
   productFlavors {
     create("client") {
       dimension = "appRole"
-      applicationIdSuffix = ".client"
+      applicationId = "com.personalagent.client"
       manifestPlaceholders["clientActivityEnabled"] = "true"
       manifestPlaceholders["adminActivityEnabled"] = "false"
     }
     create("admin") {
       dimension = "appRole"
-      applicationIdSuffix = ".admin"
+      applicationId = "com.personalagent.admin"
       manifestPlaceholders["clientActivityEnabled"] = "false"
       manifestPlaceholders["adminActivityEnabled"] = "true"
     }
@@ -128,7 +128,7 @@ if screen.exists():
     new_list = """            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (devices.isEmpty()) {
                     Text(
-                        text = "No client connected. This build does not yet have a live pairing backend; remote devices will appear only after an explicit pairing flow is implemented.",
+                        text = "No client paired yet. Generate a code here, then enter it on the Client phone and approve the request there.",
                         color = CyberWarningAmber,
                         fontSize = 13.sp
                     )
@@ -506,6 +506,67 @@ if 'implementation("com.google.firebase:firebase-auth")' not in g or 'implementa
 '''
     g = g[:close_brace] + firebase + g[close_brace:]
     gradle.write_text(g)
+
+
+# Ensure the Google Services plugin and Firebase configuration are present in the
+# generated flavor build. The Firebase app IDs below belong to private-agent-98752.
+root_gradle_kts = root / "build.gradle.kts"
+root_gradle_groovy = root / "build.gradle"
+module_gradle = gradle
+root_gradle = root_gradle_kts if root_gradle_kts.exists() else root_gradle_groovy
+if not root_gradle.exists():
+    raise SystemExit("Could not find root Gradle build file for Google Services plugin")
+root_text = root_gradle.read_text()
+if "com.google.gms.google-services" not in root_text:
+    plugin_line = '    id("com.google.gms.google-services") version "4.4.2" apply false\\n' if root_gradle.suffix == ".kts" else "    id 'com.google.gms.google-services' version '4.4.2' apply false\\n"
+    close = root_text.find("}")
+    if close < 0:
+        raise SystemExit("Could not find root plugins block")
+    root_text = root_text[:close] + plugin_line + root_text[close:]
+    root_gradle.write_text(root_text)
+
+module_text = module_gradle.read_text()
+if "com.google.gms.google-services" not in module_text:
+    plugin_marker = 'plugins {'
+    pos = module_text.find(plugin_marker)
+    if pos < 0:
+        raise SystemExit("Could not find app module plugins block")
+    close = module_text.find("}", pos)
+    if close < 0:
+        raise SystemExit("Could not find end of app module plugins block")
+    plugin_line = '    id("com.google.gms.google-services")\\n' if module_gradle.suffix == ".kts" else "    id 'com.google.gms.google-services'\\n"
+    module_text = module_text[:close] + plugin_line + module_text[close:]
+    module_gradle.write_text(module_text)
+
+firebase_config = {
+    "project_info": {
+        "project_number": "231949189294",
+        "project_id": "private-agent-98752",
+        "storage_bucket": "private-agent-98752.firebasestorage.app",
+        "firebase_url": "https://private-agent-98752-default-rtdb.firebaseio.com"
+    },
+    "client": [
+        {
+            "client_info": {
+                "mobilesdk_app_id": "1:231949189294:android:c0441a03498fa1ed962d3f",
+                "android_client_info": {"package_name": "com.personalagent.client"}
+            },
+            "api_key": [{"current_key": "AIzaSyBALuDDvkUNtO68bW1dX4mXPzy4AR5DIGg"}],
+            "services": {"appinvite_service": {"other_platform_oauth_client": []}}
+        },
+        {
+            "client_info": {
+                "mobilesdk_app_id": "1:231949189294:android:a672a0901da1a415962d3f",
+                "android_client_info": {"package_name": "com.personalagent.admin"}
+            },
+            "api_key": [{"current_key": "AIzaSyBALuDDvkUNtO68bW1dX4mXPzy4AR5DIGg"}],
+            "services": {"appinvite_service": {"other_platform_oauth_client": []}}
+        }
+    ],
+    "configuration_version": "1"
+}
+import json
+(app / "google-services.json").write_text(json.dumps(firebase_config, indent=2) + "\\n")
 
 for path in (main, admin):
     content = path.read_text()
