@@ -736,3 +736,83 @@ rules_path.write_text('''{
   }
 }
 ''')
+
+
+// Email/password Firebase account sign-in so the same account can be used on
+// both apps and its Firebase UID survives process restarts/reinstalls.
+pair_repo = app / "src/main/java/com/example/manager/PairingRepository.kt"
+if pair_repo.exists():
+    psrc = pair_repo.read_text()
+    if "fun authenticateAccount(" not in psrc:
+        method = """
+    fun authenticateAccount(email: String, password: String, create: Boolean, done: (String?, String?) -> Unit) {
+        val e = email.trim()
+        if (e.isBlank() || password.length < 6) {
+            done(null, "Enter a valid email and password (at least 6 characters).")
+            return
+        }
+        try {
+            val auth = FirebaseAuth.getInstance()
+            val task = if (create) auth.createUserWithEmailAndPassword(e, password)
+                       else auth.signInWithEmailAndPassword(e, password)
+            task.addOnSuccessListener { done(it.user?.uid, null) }
+                .addOnFailureListener { done(null, it.message ?: "Firebase account sign-in failed") }
+        } catch (e: Exception) {
+            done(null, "Firebase Authentication is unavailable. Check google-services.json and Email/Password provider.")
+        }
+    }
+
+"""
+        psrc = psrc[:psrc.rfind("}")] + method + psrc[psrc.rfind("}"):]
+        pair_repo.write_text(psrc)
+
+panel_path = app / "src/main/java/com/example/ui/components/PairingPanel.kt"
+if panel_path.exists():
+    p = panel_path.read_text()
+    if "FIREBASE ACCOUNT" not in p:
+        p = p.replace(
+            "    var busy by remember { mutableStateOf(false) }",
+            """    var busy by remember { mutableStateOf(false) }
+    var accountEmail by remember { mutableStateOf("") }
+    var accountPassword by remember { mutableStateOf("") }
+    var createAccount by remember { mutableStateOf(false) }
+    var accountStatus by remember { mutableStateOf("") }"""
+        )
+        marker = '            Text(if (isAdmin) "PAIR A CLIENT" else "DEVICE PAIRING", color = CyberCyanPrimary, fontWeight = FontWeight.Bold)'
+        insert = marker + """
+            Text("FIREBASE ACCOUNT", color = CyberCyanPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            OutlinedTextField(
+                value = accountEmail,
+                onValueChange = { accountEmail = it },
+                label = { Text("Email / username") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                value = accountPassword,
+                onValueChange = { accountPassword = it },
+                label = { Text("Password (6+ characters)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { createAccount = false }, modifier = Modifier.weight(1f)) {
+                    Text(if (!createAccount) "✓ Login" else "Login")
+                }
+                OutlinedButton(onClick = { createAccount = true }, modifier = Modifier.weight(1f)) {
+                    Text(if (createAccount) "✓ Create" else "Create account")
+                }
+            }
+            Button(onClick = {
+                busy = true; accountStatus = ""
+                PairingRepository.authenticateAccount(accountEmail, accountPassword, createAccount) { uid, message ->
+                    busy = false
+                    accountStatus = if (uid != null) "Account connected. UID: " + uid.take(8) else (message ?: "Account login failed")
+                }
+            }, enabled = !busy && accountEmail.isNotBlank() && accountPassword.length >= 6, modifier = Modifier.fillMaxWidth()) {
+                Text(if (busy) "Signing in…" else if (createAccount) "Create Firebase account" else "Login with Firebase account")
+            }
+            if (accountStatus.isNotBlank()) Text(accountStatus, color = CyberTextSecondary, fontSize = 12.sp)
+"""
+        p = p.replace(marker, insert, 1)
+        panel_path.write_text(p)
