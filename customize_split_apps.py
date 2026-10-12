@@ -86,6 +86,66 @@ else:
     s = re.sub(r'minSdk\s*=\s*\d+', 'minSdk = 29', s, count=1)
 gradle.write_text(s)
 
+# Never present hard-coded sample phones as connected remote clients.
+security = app / "src/main/java/com/example/manager/SecurityRepository.kt"
+if security.exists():
+    source = security.read_text()
+    start = source.find("        if (_managedDevices.value.isEmpty()) {")
+    if start >= 0:
+        open_brace = source.find("{", start)
+        depth = 0
+        end = -1
+        for i in range(open_brace, len(source)):
+            if source[i] == "{":
+                depth += 1
+            elif source[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    end = i + 1
+                    break
+        if end < 0:
+            raise SystemExit("Could not safely locate mock managed-device seed block")
+        source = source[:start] + """        // Remote devices must come from a real, consent-based pairing/backend.
+        _managedDevices.value = emptyList()""" + source[end:]
+        security.write_text(source)
+
+screen = app / "src/main/java/com/example/ui/screens/AdminControllerScreen.kt"
+if screen.exists():
+    source = screen.read_text()
+    source = source.replace(
+        'var selectedDeviceId by remember { mutableStateOf("agent_primary") }',
+        'var selectedDeviceId by remember { mutableStateOf("") }'
+    )
+    old_list = """            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                devices.forEach { dev ->
+                    DeviceSelectorCard(
+                        device = dev,
+                        isSelected = dev.deviceId == selectedDeviceId,
+                        onSelect = { selectedDeviceId = dev.deviceId }
+                    )
+                }
+            }"""
+    new_list = """            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (devices.isEmpty()) {
+                    Text(
+                        text = "No client connected. This build does not yet have a live pairing backend; remote devices will appear only after an explicit pairing flow is implemented.",
+                        color = CyberWarningAmber,
+                        fontSize = 13.sp
+                    )
+                } else {
+                    devices.forEach { dev ->
+                        DeviceSelectorCard(
+                            device = dev,
+                            isSelected = dev.deviceId == selectedDeviceId,
+                            onSelect = { selectedDeviceId = dev.deviceId }
+                        )
+                    }
+                }
+            }"""
+    if old_list in source:
+        source = source.replace(old_list, new_list, 1)
+    screen.write_text(source)
+
 for path in (main, admin):
     content = path.read_text()
     for marker in ("open_admin_app_btn", "open_client_app_btn", "Switch to Admin App Button", "Switch to Client App"):
