@@ -181,7 +181,10 @@ object PairingRepository {
 
     fun signIn(done: (String?, String?) -> Unit) {
         try {
-            FirebaseAuth.getInstance().signInAnonymously()
+            val auth = FirebaseAuth.getInstance()
+            val currentUser = auth.currentUser
+            if (currentUser != null) { done(currentUser.uid, null); return }
+            auth.signInAnonymously()
                 .addOnSuccessListener { done(it.user?.uid, null) }
                 .addOnFailureListener { done(null, it.message ?: "Firebase sign-in failed") }
         } catch (e: Exception) {
