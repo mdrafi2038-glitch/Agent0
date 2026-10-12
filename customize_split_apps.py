@@ -574,3 +574,164 @@ for path in (main, admin):
         if marker in content:
             raise SystemExit(f"Cross-app switch control still present: {marker} in {path}")
 print(f"Customized split Client/Admin flavors in {root}")
+
+
+// Persistent paired-client command delivery. Commands are queued in Firebase and
+// received by the Client foreground service. Only non-destructive, owner-approved
+// actions are remotely executable; power-off/wipe/camera capture are intentionally excluded.
+service_path = app / "src/main/java/com/example/service/AgentService.kt"
+if service_path.exists():
+    service = service_path.read_text()
+    imports = [
+        "import com.google.firebase.database.DataSnapshot",
+        "import com.google.firebase.database.DatabaseError",
+        "import com.google.firebase.database.DatabaseReference",
+        "import com.google.firebase.database.FirebaseDatabase",
+        "import com.google.firebase.database.ChildEventListener"
+    ]
+    for imp in imports:
+        if imp not in service:
+            service = service.replace("import com.example.manager.SecurityRepository\n", "import com.example.manager.SecurityRepository\n" + imp + "\n", 1)
+    if "private var remoteCommandRef: DatabaseReference? = null" not in service:
+        service = service.replace(
+            "    private var accelerometer: Sensor? = null\n",
+            "    private var accelerometer: Sensor? = null\n    private var remoteCommandRef: DatabaseReference? = null\n    private var remoteCommandListener: ChildEventListener? = null\n",
+            1
+        )
+    if "attachRemoteCommandQueue()" not in service:
+        service = service.replace(
+            "        registerMotionSensor()\n",
+            "        registerMotionSensor()\n        attachRemoteCommandQueue()\n",
+            1
+        )
+        service = service.replace(
+            "    private fun registerMotionSensor() {",
+            """    private fun attachRemoteCommandQueue() {
+        val token = getSharedPreferences("agent_pairing", Context.MODE_PRIVATE)
+            .getString("client_token", null)?.takeIf { it.matches(Regex("^[a-f0-9]{32}$")) } ?: return
+        try {
+            val ref = FirebaseDatabase.getInstance().reference.child("commands").child(token)
+            remoteCommandRef = ref
+            val listener = object : ChildEventListener {
+                override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
+                    val status = snapshot.child("status").getValue(String::class.java) ?: "PENDING"
+                    if (status != "PENDING") return
+                    val id = snapshot.child("id").getValue(String::class.java) ?: snapshot.key ?: return
+                    val typeName = snapshot.child("type").getValue(String::class.java) ?: return
+                    val allowed = setOf("TRIGGER_SIREN", "STOP_SIREN", "REQUEST_DIAGNOSTICS", "LOCK_DEVICE")
+                    if (typeName !in allowed) {
+                        ref.child(id).child("status").setValue("REJECTED_UNSUPPORTED")
+                        return
+                    }
+                    ref.child(id).child("status").setValue("RUNNING")
+                    try {
+                        val type = com.example.model.CommandType.valueOf(typeName)
+                        val command = com.example.model.AdminCommand(
+                            id = id,
+                            type = type,
+                            targetDeviceId = token,
+                            issuedAt = snapshot.child("issuedAt").getValue(Long::class.java) ?: System.currentTimeMillis()
+                        )
+                        AgentCommandHandler(this@AgentService).executeCommandSync(command)
+                        ref.child(id).updateChildren(mapOf(
+                            "status" to "EXECUTED",
+                            "resultSummary" to "Client handled command",
+                            "completedAt" to System.currentTimeMillis()
+                        ))
+                    } catch (e: Exception) {
+                        ref.child(id).updateChildren(mapOf(
+                            "status" to "FAILED",
+                            "resultSummary" to (e.localizedMessage ?: "Execution failed"),
+                            "completedAt" to System.currentTimeMillis()
+                        ))
+                    }
+                }
+                override fun onChildChanged(snapshot: DataSnapshot, previousChildName: String?) {}
+                override fun onChildRemoved(snapshot: DataSnapshot) {}
+                override fun onChildMoved(snapshot: DataSnapshot, previousChildName: String?) {}
+                override fun onCancelled(error: DatabaseError) {
+                    SecurityRepository.logEvent("Remote command listener unavailable", error.message,
+                        com.example.model.EventSeverity.WARNING, com.example.model.EventType.REMOTE_COMMAND)
+                }
+            }
+            remoteCommandListener = listener
+            ref.addChildEventListener(listener)
+        } catch (e: Exception) {
+            SecurityRepository.logEvent("Remote command setup failed", e.localizedMessage ?: "Firebase unavailable",
+                com.example.model.EventSeverity.WARNING, com.example.model.EventType.REMOTE_COMMAND)
+        }
+    }
+
+    private fun registerMotionSensor() {""",
+            1
+        )
+    if "remoteCommandRef?.let" not in service:
+        service = service.replace(
+            "        sensorManager?.unregisterListener(this)\n",
+            "        sensorManager?.unregisterListener(this)\n        remoteCommandRef?.let { ref -> remoteCommandListener?.let { ref.removeEventListener(it) } }\n",
+            1
+        )
+    service_path.write_text(service)
+
+security_path = app / "src/main/java/com/example/manager/SecurityRepository.kt"
+if security_path.exists():
+    sec = security_path.read_text()
+    if "FirebaseDatabase.getInstance().reference.child(\"commands\")" not in sec:
+        sec = sec.replace(
+            "    fun addCommand(command: AdminCommand) {\n        _commands.update { current ->",
+            """    fun addCommand(command: AdminCommand) {
+        // Remote queue is addressed by the approved pairing token. Unsupported
+        // remote command types are rejected by the Client service.
+        if (command.targetDeviceId.matches(Regex("^[a-f0-9]{32}$"))) {
+            try {
+                com.google.firebase.database.FirebaseDatabase.getInstance().reference
+                    .child("commands").child(command.targetDeviceId).child(command.id)
+                    .setValue(mapOf(
+                        "id" to command.id,
+                        "type" to command.type.name,
+                        "targetDeviceId" to command.targetDeviceId,
+                        "issuedAt" to command.issuedAt,
+                        "status" to "PENDING"
+                    ))
+            } catch (_: Exception) { }
+        }
+        _commands.update { current ->"""
+        )
+        sec_path.write_text(sec)
+
+panel_path = app / "src/main/java/com/example/ui/components/PairingPanel.kt"
+if panel_path.exists():
+    panel_source = panel_path.read_text()
+    # Keep the Admin's active token across app restarts, just like the Client token.
+    panel_source = panel_source.replace(
+        'mutableStateOf(if (isAdmin) "" else context.getSharedPreferences("agent_pairing", 0).getString("client_token", "") ?: "")',
+        'mutableStateOf(context.getSharedPreferences("agent_pairing", 0).getString(if (isAdmin) "admin_token" else "client_token", "") ?: "")'
+    )
+    panel_source = panel_source.replace(
+        'if (token != null) { activeToken = token; status = "Request sent. Waiting for Client approval." }',
+        'if (token != null) { activeToken = token; context.getSharedPreferences("agent_pairing", 0).edit().putString("admin_token", token).apply(); status = "Request sent. Waiting for Client approval." }'
+    )
+    panel_source = panel_source.replace(
+        'if (!snap.exists() || (snap.child("approved").getValue(Boolean::class.java) != true && System.currentTimeMillis() - created > 600000L)) {',
+        'if (!snap.exists() || (snap.child("approved").getValue(Boolean::class.java) != true && System.currentTimeMillis() - created > 600000L)) {'
+    )
+    panel_path.write_text(panel_source)
+
+rules_path = root / "database.rules.json"
+rules_path.write_text('''{
+  "rules": {
+    "pairRequests": {
+      "$token": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    },
+    "commands": {
+      "$token": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    }
+  }
+}
+''')
