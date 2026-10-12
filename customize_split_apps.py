@@ -816,3 +816,26 @@ if panel_path.exists():
 """
         p = p.replace(marker, insert, 1)
         panel_path.write_text(p)
+
+
+# Admin must queue commands for the paired Client instead of executing them on itself.
+admin_screen = app / "src/main/java/com/example/ui/screens/AdminControllerScreen.kt"
+if admin_screen.exists():
+    a = admin_screen.read_text()
+    if "LaunchedEffect(devices)" not in a:
+        if "import androidx.compose.runtime.LaunchedEffect\n" not in a:
+            a = a.replace("import androidx.compose.runtime.Composable\n", "import androidx.compose.runtime.Composable\nimport androidx.compose.runtime.LaunchedEffect\n", 1)
+        a = a.replace(
+            '    var selectedDeviceId by remember { mutableStateOf("") }',
+            '''    var selectedDeviceId by remember { mutableStateOf("") }
+    LaunchedEffect(devices) {
+        if (selectedDeviceId.isBlank() && devices.isNotEmpty()) {
+            selectedDeviceId = devices.first().deviceId
+        }
+    }''',
+            1
+        )
+    a = a.replace("    val handler = remember { AgentCommandHandler(context) }\n", "")
+    a = a.replace("                            handler.executeCommand(cmd)\n", "")
+    a = a.replace("                        handler.executeCommand(cmd)\n", "")
+    admin_screen.write_text(a)
