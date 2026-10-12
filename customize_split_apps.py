@@ -479,6 +479,34 @@ if panel_path.exists():
     )
     panel_path.write_text(panel_source)
 
+# Ensure Firebase Auth/Realtime Database dependencies are present even if the ZIP's
+# version-catalog aliases differ from the names expected by an earlier script revision.
+g = gradle.read_text()
+if 'com.google.firebase:firebase-auth' not in g and 'libs.firebase.auth' not in g:
+    dep_match = re.search(r'(?m)^dependencies\\s*\\{', g)
+    if not dep_match:
+        raise SystemExit("Could not find app dependencies block to add Firebase libraries")
+    open_brace = g.find("{", dep_match.start())
+    depth = 0
+    close_brace = -1
+    for i in range(open_brace, len(g)):
+        if g[i] == "{":
+            depth += 1
+        elif g[i] == "}":
+            depth -= 1
+            if depth == 0:
+                close_brace = i
+                break
+    if close_brace < 0:
+        raise SystemExit("Could not safely locate dependencies block end")
+    firebase = '''
+  implementation(platform("com.google.firebase:firebase-bom:34.3.0"))
+  implementation("com.google.firebase:firebase-auth")
+  implementation("com.google.firebase:firebase-database")
+'''
+    g = g[:close_brace] + firebase + g[close_brace:]
+    gradle.write_text(g)
+
 for path in (main, admin):
     content = path.read_text()
     for marker in ("open_admin_app_btn", "open_client_app_btn", "Switch to Admin App Button", "Switch to Client App"):
