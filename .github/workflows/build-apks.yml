@@ -54,7 +54,6 @@ jobs:
           fi
           if [ -z "$PROJECT_DIR" ]; then
             echo "Could not find settings.gradle or settings.gradle.kts inside the ZIP."
-            echo "ZIP contents:"
             find extracted -maxdepth 4 -type f | head -200
             exit 1
           fi
@@ -69,24 +68,10 @@ jobs:
           python3 customize_split_apps.py "$PROJECT_DIR"
           echo "Configured separate Client and Admin flavors."
 
-      - name: Ensure debug signing keystore exists
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ ! -f extracted/debug.keystore ]; then
-            keytool -genkeypair -v \
-              -keystore extracted/debug.keystore \
-              -storepass android \
-              -alias androiddebugkey \
-              -keypass android \
-              -keyalg RSA -keysize 2048 -validity 10000 \
-              -dname "CN=Android Debug,O=Android,C=US"
-          fi
-
-      - name: Set up Gradle 9.3.1
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '9.3.1'
+          gradle-version: '8.10.2'
 
       - name: Build debug APKs
         shell: bash
@@ -94,24 +79,54 @@ jobs:
           set -euo pipefail
           gradle -p "$PROJECT_DIR" assembleClientDebug assembleAdminDebug --stacktrace
 
-      - name: Collect APKs
+      - name: Collect separate APKs and updated source ZIP
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p apk-output
-          find "$PROJECT_DIR" -type f -path '*/build/outputs/apk/*/*.apk' -exec cp {} apk-output/ \;
-          if ! find apk-output -type f -name '*.apk' | grep -q .; then
-            echo "Build finished but no APK files were found."
+          mkdir -p release-output/source
+          find "$PROJECT_DIR" -type f -path '*/build/outputs/apk/*/*.apk' -print
+          CLIENT_APK="$(find "$PROJECT_DIR" -type f -path '*/build/outputs/apk/*/*.apk' | grep -i '/client/' | head -1 || true)"
+          ADMIN_APK="$(find "$PROJECT_DIR" -type f -path '*/build/outputs/apk/*/*.apk' | grep -i '/admin/' | head -1 || true)"
+          if [ -z "$CLIENT_APK" ] || [ -z "$ADMIN_APK" ]; then
+            echo "Could not identify both Client and Admin APKs."
+            find "$PROJECT_DIR" -type f -path '*/build/outputs/apk/*/*.apk' -exec ls -lh {} \;
             exit 1
           fi
-          ls -lh apk-output
+          cp "$CLIENT_APK" release-output/PersonalAgent-Client-debug.apk
+          cp "$ADMIN_APK" release-output/PersonalAgent-Admin-debug.apk
+          # Package the customized source, excluding caches and build outputs.
+          tar -C "$PROJECT_DIR" --exclude='**/build' --exclude='.gradle' --exclude='.idea' -czf release-output/source/PersonalAgent-Updated-Source.tar.gz .
+          (cd release-output && sha256sum PersonalAgent-Client-debug.apk PersonalAgent-Admin-debug.apk source/PersonalAgent-Updated-Source.tar.gz > SHA256SUMS.txt)
+          ls -lh release-output/PersonalAgent-Client-debug.apk release-output/PersonalAgent-Admin-debug.apk release-output/source/PersonalAgent-Updated-Source.tar.gz
 
-      - name: Upload APK artifacts
+      - name: Upload Client APK separately
         uses: actions/upload-artifact@v4
         with:
-          name: PersonalAgent-debug-APKs
-          path: apk-output/*.apk
+          name: PersonalAgent-Client-APK
+          path: release-output/PersonalAgent-Client-debug.apk
           if-no-files-found: error
           retention-days: 14
 
-# Trigger rebuild for the uploaded original UI project.
+      - name: Upload Admin APK separately
+        uses: actions/upload-artifact@v4
+        with:
+          name: PersonalAgent-Admin-APK
+          path: release-output/PersonalAgent-Admin-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload updated source separately
+        uses: actions/upload-artifact@v4
+        with:
+          name: PersonalAgent-Updated-Source
+          path: release-output/source/PersonalAgent-Updated-Source.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: PersonalAgent-SHA256SUMS
+          path: release-output/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
