@@ -68,6 +68,18 @@ jobs:
           python3 customize_split_apps.py "$PROJECT_DIR"
           echo "Configured separate Client and Admin flavors."
 
+      - name: Create expected local debug keystore
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The project config expects ../debug.keystore relative to PROJECT_DIR.
+          KEYSTORE="$GITHUB_WORKSPACE/extracted/debug.keystore"
+          if [ ! -f "$KEYSTORE" ]; then
+            keytool -genkeypair -v -keystore "$KEYSTORE" -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          test -s "$KEYSTORE"
+          echo "Debug keystore prepared at $KEYSTORE"
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
