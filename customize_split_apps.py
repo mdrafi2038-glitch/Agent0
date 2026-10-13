@@ -950,3 +950,159 @@ if admin_screen.exists():
         if marker in src:
             src = src.replace(marker, ui + marker, 1)
         admin_screen.write_text(src)
+
+
+# Trial hardening: transparent restriction screen and correct paired-token routing.
+lock_path = app / "src/main/java/com/example/lock/LockActivity.kt"
+if lock_path.exists():
+    lock_path.write_text(r"""package com.example.lock
+
+import android.app.admin.DevicePolicyManager
+import android.content.ComponentName
+import android.content.Context
+import android.os.Build
+import android.os.Bundle
+import android.view.WindowManager
+import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.receiver.AgentDeviceAdminReceiver
+import com.example.ui.theme.MyApplicationTheme
+
+class LockActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+        } else {
+            @Suppress("DEPRECATION")
+            window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
+        }
+        setContent {
+            MyApplicationTheme(darkTheme = true) {
+                RestrictionScreen(
+                    onRestart = {
+                        val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && dpm.isDeviceOwnerApp(packageName)) {
+                            try {
+                                dpm.reboot(ComponentName(this, AgentDeviceAdminReceiver::class.java))
+                            } catch (_: Exception) {
+                                Toast.makeText(this, "Restart is unavailable. Use the phone power menu.", Toast.LENGTH_LONG).show()
+                            }
+                        } else {
+                            Toast.makeText(this, "Restart requires Device Owner setup in this Trial build. Use the phone power menu.", Toast.LENGTH_LONG).show()
+                        }
+                    },
+                    onTurnOff = {
+                        Toast.makeText(this, "Android does not let this Trial app power off the phone. Use the phone power menu.", Toast.LENGTH_LONG).show()
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RestrictionScreen(onRestart: () -> Unit, onTurnOff: () -> Unit) {
+    var showTurnOffInfo by remember { mutableStateOf(false) }
+    Surface(modifier = Modifier.fillMaxSize(), color = Color(0xEE10131B)) {
+        Column(
+            modifier = Modifier.fillMaxSize().background(Color(0xEE10131B)).padding(28.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "Your device is temporarily restricted",
+                color = Color.White,
+                fontSize = 23.sp,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(28.dp))
+            Button(
+                onClick = onRestart,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2878E5))
+            ) {
+                Text("Restart", modifier = Modifier.padding(vertical = 5.dp))
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            OutlinedButton(onClick = { showTurnOffInfo = true }, modifier = Modifier.fillMaxWidth()) {
+                Text("Turn off", modifier = Modifier.padding(vertical = 5.dp), color = Color.White)
+            }
+        }
+    }
+    if (showTurnOffInfo) {
+        AlertDialog(
+            onDismissRequest = { showTurnOffInfo = false },
+            title = { Text("Turn off device") },
+            text = { Text("Use your phone's physical power menu to turn it off. This Trial app cannot shut down Android directly.") },
+            confirmButton = {
+                TextButton(onClick = { showTurnOffInfo = false }) { Text("OK") }
+            }
+        )
+    }
+}
+""")
+
+admin_screen = app / "src/main/java/com/example/ui/screens/AdminControllerScreen.kt"
+if admin_screen.exists():
+    src = admin_screen.read_text()
+    token_expr = '(context.getSharedPreferences("agent_pairing", Context.MODE_PRIVATE).getString("admin_token", "") ?: "")'
+    src = src.replace("targetDeviceId = selectedDeviceId", "targetDeviceId = " + token_expr)
+    src = src.replace('title = "Power Off",\n                        desc = "Remote phone shutdown"', 'title = "Lock + Power Options",\n                        desc = "Show Client restriction screen"')
+    src = src.replace('Text("Confirm Remote Power Off", color = CyberAlertCrimson, fontWeight = FontWeight.Bold)', 'Text("Show Client Power Options", color = CyberAlertCrimson, fontWeight = FontWeight.Bold)')
+    src = src.replace(
+        "This will trigger an immediate system shutdown on the client device.",
+        "This will open the Client restriction screen. Actual restart or shutdown depends on Android permissions."
+    )
+    src = src.replace("val cmd = AdminCommand(type = CommandType.POWER_OFF, targetDeviceId = " + token_expr + ")", "val cmd = AdminCommand(type = CommandType.LOCK_DEVICE, targetDeviceId = " + token_expr + ")")
+    src = src.replace('Toast.makeText(context, "Remote Power Off Instruction Dispatched", Toast.LENGTH_LONG).show()', 'Toast.makeText(context, "Client restriction screen command sent", Toast.LENGTH_LONG).show()')
+    src = src.replace(
+        'val cmd = AdminCommand(type = CommandType.CAPTURE_PHOTO, targetDeviceId = ' + token_expr + ')\n                            SecurityRepository.addCommand(cmd)\n                            Toast.makeText(context, "Snapshot Command Dispatched", Toast.LENGTH_SHORT).show()',
+        'Toast.makeText(context, "Remote photo capture is not implemented in the Trial build.", Toast.LENGTH_LONG).show()'
+    )
+    src = src.replace(
+        'val cmd = AdminCommand(type = CommandType.WIPE_DEVICE, targetDeviceId = ' + token_expr + ')\n                        SecurityRepository.addCommand(cmd)\n                        Toast.makeText(context, "Emergency Wipe Instruction Dispatched", Toast.LENGTH_LONG).show()',
+        'Toast.makeText(context, "Remote wipe is not implemented in the Trial build.", Toast.LENGTH_LONG).show()'
+    )
+    admin_screen.write_text(src)
+
+service_path = app / "src/main/java/com/example/service/AgentService.kt"
+if service_path.exists():
+    src = service_path.read_text()
+    src = src.replace(
+        'setOf("TRIGGER_SIREN", "STOP_SIREN", "REQUEST_DIAGNOSTICS", "LOCK_DEVICE", "CLEAR_BACKGROUND_PROCESSES")',
+        'setOf("TRIGGER_SIREN", "STOP_SIREN", "REQUEST_DIAGNOSTICS", "LOCK_DEVICE", "CLEAR_BACKGROUND_PROCESSES", "LOCATE_DEVICE", "TOGGLE_CAMERA_POLICY")'
+    )
+    service_path.write_text(src)
