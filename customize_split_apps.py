@@ -694,7 +694,30 @@ if security_path.exists():
                         "issuedAt" to command.issuedAt,
                         "status" to "PENDING"
                     ))
-            } catch (_: Exception) { }
+                    .addOnSuccessListener {
+                        logEvent(
+                            "Remote command queued",
+                            "Command " + command.type.name + " queued for paired Client token " + command.targetDeviceId.take(8),
+                            EventSeverity.INFO,
+                            EventType.REMOTE_COMMAND
+                        )
+                    }
+                    .addOnFailureListener { error ->
+                        logEvent(
+                            "Remote command send failed",
+                            error.message ?: "Firebase rejected command write. Check authenticated session and Realtime Database rules.",
+                            EventSeverity.WARNING,
+                            EventType.REMOTE_COMMAND
+                        )
+                    }
+            } catch (error: Exception) {
+                logEvent(
+                    "Remote command send failed",
+                    error.message ?: "Firebase database unavailable",
+                    EventSeverity.WARNING,
+                    EventType.REMOTE_COMMAND
+                )
+            }
         }
         _commands.update { current ->"""
         )
