@@ -1106,3 +1106,16 @@ if service_path.exists():
         'setOf("TRIGGER_SIREN", "STOP_SIREN", "REQUEST_DIAGNOSTICS", "LOCK_DEVICE", "CLEAR_BACKGROUND_PROCESSES", "LOCATE_DEVICE", "TOGGLE_CAMERA_POLICY")'
     )
     service_path.write_text(src)
+
+
+# Use the configured Realtime Database instance explicitly. Some google-services.json
+# files omit database_url, which makes FirebaseDatabase.getInstance() fail at runtime.
+database_url = "https://private-agent-98752-default-rtdb.firebaseio.com/"
+for kotlin_file in (app / "src/main/java").rglob("*.kt"):
+    kotlin_source = kotlin_file.read_text()
+    updated_source = kotlin_source.replace(
+        "FirebaseDatabase.getInstance()",
+        'FirebaseDatabase.getInstance("' + database_url + '")'
+    )
+    if updated_source != kotlin_source:
+        kotlin_file.write_text(updated_source)
