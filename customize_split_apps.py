@@ -180,15 +180,22 @@ object PairingRepository {
     private const val EXPIRY = 600000L
 
     fun signIn(done: (String?, String?) -> Unit) {
+        val completed = java.util.concurrent.atomic.AtomicBoolean(false)
+        fun finish(uid: String?, error: String?) {
+            if (completed.compareAndSet(false, true)) done(uid, error)
+        }
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            finish(null, "Firebase sign-in timed out. Check internet and Firebase Authentication.")
+        }, 15000L)
         try {
             val auth = FirebaseAuth.getInstance()
             val currentUser = auth.currentUser
-            if (currentUser != null) { done(currentUser.uid, null); return }
+            if (currentUser != null) { finish(currentUser.uid, null); return }
             auth.signInAnonymously()
-                .addOnSuccessListener { done(it.user?.uid, null) }
-                .addOnFailureListener { done(null, it.message ?: "Firebase sign-in failed") }
+                .addOnSuccessListener { finish(it.user?.uid, null) }
+                .addOnFailureListener { finish(null, it.message ?: "Firebase sign-in failed") }
         } catch (e: Exception) {
-            done(null, "Firebase configuration missing: add google-services.json and enable Anonymous sign-in.")
+            finish(null, "Firebase configuration missing or unavailable: " + (e.message ?: "check google-services.json and Authentication providers."))
         }
     }
 
@@ -214,29 +221,36 @@ object PairingRepository {
     }
 
     fun request(raw: String, done: (String?, String?) -> Unit) {
+        val completed = java.util.concurrent.atomic.AtomicBoolean(false)
+        fun finish(token: String?, error: String?) {
+            if (completed.compareAndSet(false, true)) done(token, error)
+        }
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            finish(null, "Pairing request timed out. Check database rules, internet, and Firebase project URL.")
+        }, 20000L)
         val token = raw.trim().lowercase()
         if (!token.matches(Regex("^[a-f0-9]{32}$"))) {
-            done(null, "Enter the full 32-character code from Client."); return
+            finish(null, "Enter the full 32-character code from Client."); return
         }
         signIn { uid, err ->
-            if (uid == null) { done(null, err); return@signIn }
+            if (uid == null) { finish(null, err); return@signIn }
             try {
                 val ref = FirebaseDatabase.getInstance().reference.child(ROOT).child(token)
                 ref.get().addOnSuccessListener { snap ->
                     val created = snap.child("createdAt").getValue(Long::class.java) ?: 0L
                     if (!snap.exists() || System.currentTimeMillis() - created > EXPIRY) {
-                        done(null, "Code invalid or expired. Generate a new one on Client."); return@addOnSuccessListener
+                        finish(null, "Code invalid or expired. Generate a new one on Client."); return@addOnSuccessListener
                     }
                     if (snap.child("approved").getValue(Boolean::class.java) == true) {
-                        done(null, "This code has already been used."); return@addOnSuccessListener
+                        finish(null, "This code has already been used."); return@addOnSuccessListener
                     }
                     ref.child("adminUid").setValue(uid).addOnSuccessListener {
                         ref.child("adminRequestedAt").setValue(System.currentTimeMillis())
-                            .addOnSuccessListener { done(token, null) }
-                            .addOnFailureListener { done(null, it.message ?: "Pair request failed") }
-                    }.addOnFailureListener { done(null, it.message ?: "Pair request failed") }
-                }.addOnFailureListener { done(null, it.message ?: "Database read failed; check rules") }
-            } catch (e: Exception) { done(null, e.message ?: "Firebase database unavailable") }
+                            .addOnSuccessListener { finish(token, null) }
+                            .addOnFailureListener { finish(null, "Could not write adminRequestedAt: " + (it.message ?: "permission denied")) }
+                    }.addOnFailureListener { finish(null, "Could not write adminUid: " + (it.message ?: "permission denied")) }
+                }.addOnFailureListener { finish(null, "Database read failed: " + (it.message ?: "check Firebase rules")) }
+            } catch (e: Exception) { finish(null, e.message ?: "Firebase database unavailable") }
         }
     }
 
