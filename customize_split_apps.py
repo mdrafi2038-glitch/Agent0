@@ -774,14 +774,26 @@ if pair_repo.exists():
             done(null, "Enter a valid email and password (at least 6 characters).")
             return
         }
+        val completed = java.util.concurrent.atomic.AtomicBoolean(false)
+        val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+        fun finish(uid: String?, message: String?) {
+            if (completed.compareAndSet(false, true)) {
+                mainHandler.removeCallbacksAndMessages(null)
+                mainHandler.post { done(uid, message) }
+            }
+        }
+        // Never leave the UI stuck on "Signing in…" if Firebase does not complete its Task.
+        mainHandler.postDelayed({
+            finish(null, "Sign-in timed out after 20 seconds. Check internet, Firebase Authentication > Email/Password, and the app's google-services.json.")
+        }, 20000L)
         try {
             val auth = FirebaseAuth.getInstance()
             val task = if (create) auth.createUserWithEmailAndPassword(e, password)
                        else auth.signInWithEmailAndPassword(e, password)
-            task.addOnSuccessListener { done(it.user?.uid, null) }
-                .addOnFailureListener { done(null, it.message ?: "Firebase account sign-in failed") }
+            task.addOnSuccessListener { finish(it.user?.uid, null) }
+                .addOnFailureListener { finish(null, it.message ?: "Firebase account sign-in failed") }
         } catch (e: Exception) {
-            done(null, "Firebase Authentication is unavailable. Check google-services.json and Email/Password provider.")
+            finish(null, e.message ?: "Firebase Authentication unavailable. Check Firebase configuration.")
         }
     }
 
