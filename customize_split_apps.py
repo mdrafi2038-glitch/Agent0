@@ -222,6 +222,15 @@ object PairingRepository {
         } catch (e: Exception) { done(null, e.message ?: "Firebase database unavailable") }
     }
 
+    fun revoke(context: Context, token: String) {
+        if (token.matches(Regex("^[A-HJ-NP-Z2-9]{8}$"))) {
+            try {
+                FirebaseDatabase.getInstance().reference.child(ROOT).child(token).child("revoked")
+                    .setValue(true)
+            } catch (_: Exception) { }
+        }
+    }
+
     fun request(raw: String, done: (String?, String?) -> Unit) {
         val completed = java.util.concurrent.atomic.AtomicBoolean(false)
         fun finish(token: String?, error: String?) {
@@ -240,7 +249,9 @@ object PairingRepository {
                 val ref = FirebaseDatabase.getInstance().reference.child(ROOT).child(token)
                 ref.get().addOnSuccessListener { snap ->
                     val created = snap.child("createdAt").getValue(Long::class.java) ?: 0L
-                    if (!snap.exists() || System.currentTimeMillis() - created > EXPIRY) {
+                    if (!snap.exists() || snap.child("revoked").getValue(Boolean::class.java) == true ||
+                        (snap.child("approved").getValue(Boolean::class.java) != true &&
+                         System.currentTimeMillis() - created > EXPIRY)) {
                         finish(null, "Code invalid or expired. Generate a new one on Client."); return@addOnSuccessListener
                     }
                     if (snap.child("approved").getValue(Boolean::class.java) == true) {
@@ -325,14 +336,18 @@ fun PairingPanel(isAdmin: Boolean) {
         var listener: ValueEventListener? = null
         if (activeToken.isNotBlank()) listener = PairingRepository.listen(activeToken, { snap: DataSnapshot ->
             val created = snap.child("createdAt").getValue(Long::class.java) ?: 0L
-            if (!snap.exists() || System.currentTimeMillis() - created > 600000L) {
-                status = "Pairing code expired. Generate a new code."
-                paired = false
+            paired = snap.child("approved").getValue(Boolean::class.java) == true
+            val created = snap.child("createdAt").getValue(Long::class.java) ?: 0L
+            if (!snap.exists() || snap.child("revoked").getValue(Boolean::class.java) == true ||
+                (!paired && System.currentTimeMillis() - created > 600000L)) {
+                status = if (snap.child("revoked").getValue(Boolean::class.java) == true)
+                    "Old code replaced. Generate a new code."
+                else "Pairing code expired. Generate a new code."
+                requested = false
             } else {
                 deviceName = snap.child("deviceName").getValue(String::class.java) ?: "Client device"
                 requested = snap.child("adminRequestedAt").exists()
-                paired = snap.child("approved").getValue(Boolean::class.java) == true
-                status = if (paired) "Connected and approved: " + deviceName
+                status = if (paired) "Permanently paired (until owner unpairs): " + deviceName
                     else if (requested && !isAdmin) "Admin requests pairing. Review and approve below."
                     else "Waiting for Client owner approval"
             }
@@ -348,16 +363,21 @@ fun PairingPanel(isAdmin: Boolean) {
                 else "Generate a one-time code. Only device name/model and Android version are shared.",
                 color = CyberTextSecondary, fontSize = 12.sp
             )
-            if (!isAdmin && activeToken.isBlank()) {
+            if (!isAdmin && !paired) {
                 Button(onClick = {
                     busy = true; error = ""
+                    val oldToken = activeToken
+                    if (oldToken.isNotBlank()) PairingRepository.revoke(context, oldToken)
                     PairingRepository.create(context) { token, message ->
                         busy = false
-                        if (token != null) { activeToken = token; status = "Share the code with Admin, then approve the request." }
-                        else error = message ?: "Pairing failed"
+                        if (token != null) {
+                            activeToken = token
+                            requested = false
+                            status = "New code generated. Previous code is invalid. Share this code with Admin."
+                        } else error = message ?: "Pairing failed"
                     }
                 }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
-                    Text(if (busy) "Creating…" else "Generate pairing code")
+                    Text(if (busy) "Creating…" else if (activeToken.isBlank()) "Generate pairing code" else "Generate new code")
                 }
             }
             if (isAdmin && !paired) {
@@ -376,12 +396,12 @@ fun PairingPanel(isAdmin: Boolean) {
                         if (token != null) { activeToken = token; status = "Request sent. Waiting for Client approval." }
                         else error = message ?: "Could not request pairing"
                     }
-                }, enabled = !busy && code.length == 32, modifier = Modifier.fillMaxWidth()) {
+                }, enabled = !busy && code.length == 8, modifier = Modifier.fillMaxWidth()) {
                     Text(if (busy) "Sending…" else "Request pairing")
                 }
             }
             if (!isAdmin && activeToken.isNotBlank()) {
-                Text("One-time code (valid 10 minutes):", color = CyberWarningAmber, fontWeight = FontWeight.Bold)
+                Text("Code expires in 10 minutes until approved:", color = CyberWarningAmber, fontWeight = FontWeight.Bold)
                 Text(activeToken, color = CyberWarningAmber, fontFamily = FontFamily.Monospace, fontSize = 13.sp)
                 if (requested && !paired) Button(onClick = {
                     busy = true
@@ -472,7 +492,7 @@ if panel_path.exists():
             "import com.example.model.ManagedDevice\n"
         )
     panel_source = panel_source.replace(
-        'if (!snap.exists() || System.currentTimeMillis() - created > 600000L) {',
+        'if (!snap.exists() || snap.child("revoked").getValue(Boolean::class.java) == true || (!snap.child("approved").getValue(Boolean::class.java).let { it == true } && System.currentTimeMillis() - created > 600000L)) {',
         'if (!snap.exists() || (snap.child("approved").getValue(Boolean::class.java) != true && System.currentTimeMillis() - created > 600000L)) {'
     )
     panel_source = panel_source.replace(
