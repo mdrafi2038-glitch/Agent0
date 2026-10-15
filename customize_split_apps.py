@@ -1301,27 +1301,29 @@ if service_path.exists():
 
 if main.exists():
     source = main.read_text()
-    if "startClientAgentServiceIfEnabled()" not in source:
+    marker = "// AUTO_START_CLIENT_AGENT_SERVICE"
+    if marker not in source:
         for imp in ["import android.content.Context", "import android.content.Intent", "import android.os.Build", "import com.example.service.AgentService"]:
-            if imp not in source: source = source.replace("import android.os.Bundle\n", "import android.os.Bundle\n" + imp + "\n", 1)
+            if imp not in source:
+                source = source.replace("import android.os.Bundle\n", "import android.os.Bundle\n" + imp + "\n", 1)
         match = re.search(r"override\s+fun\s+onCreate\s*\(\s*savedInstanceState\s*:\s*Bundle\?\s*\)\s*\{", source)
         if match:
             start = match.end()
             sup = re.search(r"super\.onCreate\(\s*savedInstanceState\s*\)", source[start:])
             if sup:
                 pos = start + sup.end()
-                source = source[:pos] + "\n        startClientAgentServiceIfEnabled()\n" + source[pos:]
-        helper = """
-    private fun startClientAgentServiceIfEnabled() {
-        if (packageName != "com.personalagent.client") return
-        val p = getSharedPreferences("agent_service_settings", Context.MODE_PRIVATE)
-        if (!p.getBoolean("service_enabled", true)) return
-        try {
-            val i = Intent(this, AgentService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(i) else startService(i)
-        } catch (_: Exception) { }
-    }
+                startup = """
+        // AUTO_START_CLIENT_AGENT_SERVICE
+        if (packageName == "com.personalagent.client") {
+            val agentPrefs = getSharedPreferences("agent_service_settings", Context.MODE_PRIVATE)
+            if (agentPrefs.getBoolean("service_enabled", true)) {
+                try {
+                    val agentIntent = Intent(this, AgentService::class.java)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(agentIntent)
+                    else startService(agentIntent)
+                } catch (_: Exception) { }
+            }
+        }
 """
-        pos = source.rfind("}")
-        if pos >= 0: source = source[:pos] + helper + source[pos:]
+                source = source[:pos] + startup + source[pos:]
         main.write_text(source)
