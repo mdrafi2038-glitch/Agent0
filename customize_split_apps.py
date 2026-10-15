@@ -323,7 +323,7 @@ fun PairingPanel(isAdmin: Boolean) {
     val context = LocalContext.current
     var code by remember { mutableStateOf("") }
     var activeToken by remember {
-        mutableStateOf(if (isAdmin) "" else context.getSharedPreferences("agent_pairing", 0).getString("client_token", "") ?: "")
+        mutableStateOf(context.getSharedPreferences("agent_pairing", 0).getString(if (isAdmin) "admin_token" else "client_token", "") ?: "")
     }
     var status by remember { mutableStateOf("Not connected") }
     var error by remember { mutableStateOf("") }
@@ -337,7 +337,6 @@ fun PairingPanel(isAdmin: Boolean) {
         if (activeToken.isNotBlank()) listener = PairingRepository.listen(activeToken, { snap: DataSnapshot ->
             val created = snap.child("createdAt").getValue(Long::class.java) ?: 0L
             paired = snap.child("approved").getValue(Boolean::class.java) == true
-            val created = snap.child("createdAt").getValue(Long::class.java) ?: 0L
             if (!snap.exists() || snap.child("revoked").getValue(Boolean::class.java) == true ||
                 (!paired && System.currentTimeMillis() - created > 600000L)) {
                 status = if (snap.child("revoked").getValue(Boolean::class.java) == true)
@@ -360,7 +359,7 @@ fun PairingPanel(isAdmin: Boolean) {
             Text(if (isAdmin) "PAIR A CLIENT" else "DEVICE PAIRING", color = CyberCyanPrimary, fontWeight = FontWeight.Bold)
             Text(
                 if (isAdmin) "Enter the one-time code shown by Client. Client owner approval is required."
-                else "Generate a one-time code. Only device name/model and Android version are shared.",
+                else "Generate a pairing code. After approval, this pairing stays saved until the Client owner replaces it.",
                 color = CyberTextSecondary, fontSize = 12.sp
             )
             if (!isAdmin && !paired) {
@@ -393,7 +392,11 @@ fun PairingPanel(isAdmin: Boolean) {
                     busy = true; error = ""
                     PairingRepository.request(code) { token, message ->
                         busy = false
-                        if (token != null) { activeToken = token; status = "Request sent. Waiting for Client approval." }
+                        if (token != null) {
+                            activeToken = token
+                            context.getSharedPreferences("agent_pairing", 0).edit().putString("admin_token", token).apply()
+                            status = "Request sent. Waiting for Client approval."
+                        }
                         else error = message ?: "Could not request pairing"
                     }
                 }, enabled = !busy && code.length == 8, modifier = Modifier.fillMaxWidth()) {
