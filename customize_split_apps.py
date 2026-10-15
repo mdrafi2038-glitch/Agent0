@@ -1193,3 +1193,135 @@ for kotlin_file in (app / "src/main/java").rglob("*.kt"):
     )
     if updated_source != kotlin_source:
         kotlin_file.write_text(updated_source)
+
+
+# Add visible foreground-service notification and boot recovery for Client flavor.
+boot_receiver = app / "src/main/java/com/example/receiver/AgentBootReceiver.kt"
+boot_receiver.parent.mkdir(parents=True, exist_ok=True)
+boot_receiver.write_text(r"""package com.example.receiver
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.os.Build
+import com.example.service.AgentService
+
+class AgentBootReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent?) {
+        val action = intent?.action ?: return
+        if (action != Intent.ACTION_BOOT_COMPLETED && action != Intent.ACTION_MY_PACKAGE_REPLACED) return
+        if (context.packageName != "com.personalagent.client") return
+        val prefs = context.getSharedPreferences("agent_service_settings", Context.MODE_PRIVATE)
+        if (!prefs.getBoolean("auto_start_enabled", true) || !prefs.getBoolean("service_enabled", true)) return
+        try {
+            val i = Intent(context, AgentService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(i) else context.startService(i)
+        } catch (_: Exception) { }
+    }
+}
+""")
+
+manifest_text = manifest.read_text()
+for permission in [
+    '    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />',
+    '    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />',
+    '    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />',
+    '    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />',
+]:
+    if permission.split('"')[1] not in manifest_text:
+        manifest_text = manifest_text.replace("<application", permission + "\n    <application", 1)
+if 'android:name=".service.AgentService"' not in manifest_text:
+    manifest_text = manifest_text.replace("</application>", '''
+        <service android:name=".service.AgentService" android:enabled="true" android:exported="false"
+            android:stopWithTask="false" android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Owner-enabled visible Personal Agent background service" />
+        </service>
+    </application>''', 1)
+if 'android:name=".receiver.AgentBootReceiver"' not in manifest_text:
+    manifest_text = manifest_text.replace("</application>", '''
+        <receiver android:name=".receiver.AgentBootReceiver" android:enabled="true" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+    </application>''', 1)
+manifest.write_text(manifest_text)
+
+if service_path.exists():
+    service = service_path.read_text()
+    for imp in [
+        "import android.app.Notification", "import android.app.NotificationChannel",
+        "import android.app.NotificationManager", "import android.app.PendingIntent",
+        "import android.content.Intent", "import android.os.Build",
+        "import androidx.core.app.NotificationCompat", "import com.example.MainActivity",
+    ]:
+        if imp not in service:
+            service = service.replace("import android.app.Service\n", "import android.app.Service\n" + imp + "\n", 1)
+    if "private fun ensureAgentForegroundNotification()" not in service:
+        match = re.search(r"override\s+fun\s+onCreate\s*\(\s*\)\s*\{", service)
+        if match:
+            start = match.end()
+            sup = re.search(r"super\.onCreate\(\s*\)", service[start:])
+            if sup:
+                pos = start + sup.end()
+                service = service[:pos] + "\n        ensureAgentForegroundNotification()\n" + service[pos:]
+        helper = r"""
+    private fun ensureAgentForegroundNotification() {
+        val id = "personal_agent_service"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            getSystemService(NotificationManager::class.java).createNotificationChannel(
+                NotificationChannel(id, "Personal Agent service", NotificationManager.IMPORTANCE_LOW)
+            )
+        }
+        val pi = PendingIntent.getActivity(this, 1001, Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0))
+        val n = NotificationCompat.Builder(this, id)
+            .setSmallIcon(android.R.drawable.ic_menu_info_details)
+            .setContentTitle("Personal Agent is active")
+            .setContentText("Background service is running. Tap to open the app.")
+            .setContentIntent(pi).setOngoing(true).setOnlyAlertOnce(true)
+            .setCategory(Notification.CATEGORY_SERVICE).setPriority(NotificationCompat.PRIORITY_LOW).build()
+        if (Build.VERSION.SDK_INT >= 34) startForeground(1001, n, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        else startForeground(1001, n)
+    }
+"""
+        pos = service.rfind("}")
+        if pos >= 0: service = service[:pos] + helper + "\n" + service[pos:]
+    if not re.search(r"override\s+fun\s+onStartCommand\s*\(", service):
+        pos = service.rfind("}")
+        if pos >= 0:
+            service = service[:pos] + """
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        ensureAgentForegroundNotification()
+        return START_STICKY
+    }
+""" + service[pos:]
+    service_path.write_text(service)
+
+if main.exists():
+    source = main.read_text()
+    if "startClientAgentServiceIfEnabled()" not in source:
+        for imp in ["import android.content.Context", "import android.content.Intent", "import android.os.Build", "import com.example.service.AgentService"]:
+            if imp not in source: source = source.replace("import android.os.Bundle\n", "import android.os.Bundle\n" + imp + "\n", 1)
+        match = re.search(r"override\s+fun\s+onCreate\s*\(\s*savedInstanceState\s*:\s*Bundle\?\s*\)\s*\{", source)
+        if match:
+            start = match.end()
+            sup = re.search(r"super\.onCreate\(\s*savedInstanceState\s*\)", source[start:])
+            if sup:
+                pos = start + sup.end()
+                source = source[:pos] + "\n        startClientAgentServiceIfEnabled()\n" + source[pos:]
+        helper = """
+    private fun startClientAgentServiceIfEnabled() {
+        if (packageName != "com.personalagent.client") return
+        val p = getSharedPreferences("agent_service_settings", Context.MODE_PRIVATE)
+        if (!p.getBoolean("service_enabled", true)) return
+        try {
+            val i = Intent(this, AgentService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(i) else startService(i)
+        } catch (_: Exception) { }
+    }
+"""
+        pos = source.rfind("}")
+        if pos >= 0: source = source[:pos] + helper + source[pos:]
+        main.write_text(source)
