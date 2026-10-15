@@ -201,7 +201,9 @@ object PairingRepository {
 
     fun create(context: Context, done: (String?, String?) -> Unit) = signIn { uid, err ->
         if (uid == null) { done(null, err); return@signIn }
-        val token = UUID.randomUUID().toString().replace("-", "")
+        val alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+        val secureRandom = java.security.SecureRandom()
+        val token = (1..8).map { alphabet[secureRandom.nextInt(alphabet.length)] }.joinToString("")
         val data = mapOf(
             "clientUid" to uid,
             "deviceName" to (Build.MANUFACTURER + " " + Build.MODEL).trim(),
@@ -228,9 +230,9 @@ object PairingRepository {
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
             finish(null, "Pairing request timed out. Check database rules, internet, and Firebase project URL.")
         }, 20000L)
-        val token = raw.trim().lowercase()
-        if (!token.matches(Regex("^[a-f0-9]{32}$"))) {
-            finish(null, "Enter the full 32-character code from Client."); return
+        val token = raw.trim().uppercase()
+        if (!token.matches(Regex("^[A-HJ-NP-Z2-9]{8}$"))) {
+            finish(null, "Enter the 8-character code from Client."); return
         }
         signIn { uid, err ->
             if (uid == null) { finish(null, err); return@signIn }
@@ -265,7 +267,7 @@ object PairingRepository {
     }
 
     fun listen(token: String, changed: (DataSnapshot) -> Unit, failed: (String) -> Unit): ValueEventListener? {
-        if (!token.matches(Regex("^[a-f0-9]{32}$"))) return null
+        if (!token.matches(Regex("^[A-HJ-NP-Z2-9]{8}$"))) return null
         return try {
             val ref = FirebaseDatabase.getInstance().reference.child(ROOT).child(token)
             val listener = object : ValueEventListener {
@@ -361,8 +363,8 @@ fun PairingPanel(isAdmin: Boolean) {
             if (isAdmin && !paired) {
                 OutlinedTextField(
                     value = code,
-                    onValueChange = { code = it.filter(Char::isLetterOrDigit).lowercase().take(32) },
-                    label = { Text("32-character pairing code") },
+                    onValueChange = { code = it.filter(Char::isLetterOrDigit).uppercase().take(8) },
+                    label = { Text("8-character pairing code") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None),
                     modifier = Modifier.fillMaxWidth()
@@ -623,7 +625,7 @@ if service_path.exists():
             "    private fun registerMotionSensor() {",
             """    private fun attachRemoteCommandQueue() {
         val token = getSharedPreferences("agent_pairing", Context.MODE_PRIVATE)
-            .getString("client_token", null)?.takeIf { it.matches(Regex("^[a-f0-9]{32}$")) } ?: return
+            .getString("client_token", null)?.takeIf { it.matches(Regex("^[A-HJ-NP-Z2-9]{8}$")) } ?: return
         try {
             val ref = FirebaseDatabase.getInstance().reference.child("commands").child(token)
             remoteCommandRef = ref
@@ -697,7 +699,7 @@ if security_path.exists():
             """    fun addCommand(command: AdminCommand) {
         // Remote queue is addressed by the approved pairing token. Unsupported
         // remote command types are rejected by the Client service.
-        if (command.targetDeviceId.matches(Regex("^[a-f0-9]{32}$"))) {
+        if (command.targetDeviceId.matches(Regex("^[A-HJ-NP-Z2-9]{8}$"))) {
             try {
                 com.google.firebase.database.FirebaseDatabase.getInstance().reference
                     .child("commands").child(command.targetDeviceId).child(command.id)
