@@ -977,7 +977,7 @@ if handler_path.exists():
                         ?.clearNonessentialBackgroundTasks()
                         ?: "Background-task cleanup is available only while the Client AgentService is running."
                     SecurityRepository.logEvent(
-                        title = "Client Background Tasks Cleared",
+                        title = "Client Monitoring Paused",
                         description = result,
                         severity = EventSeverity.INFO,
                         type = EventType.ADMIN_STATUS
@@ -1001,8 +1001,8 @@ if admin_screen.exists():
         marker = "                // Camera Policy Toggle"
         ui = '''                // Clear nonessential background work on the selected Client.
                 RemoteCommandBtn(
-                    title = "Clear Background Tasks",
-                    desc = "Stop Client monitoring tasks",
+                    title = "Pause Client Monitoring",
+                    desc = "Stop Personal Agent polling and sensor monitoring",
                     icon = Icons.Default.DeleteForever,
                     accentColor = CyberWarningAmber,
                     modifier = Modifier.fillMaxWidth().testTag("remote_action_clear_background"),
@@ -1017,7 +1017,7 @@ if admin_screen.exists():
                             SecurityRepository.addCommand(cmd)
                             Toast.makeText(
                                 context,
-                                "Clear Background Tasks command sent. This only stops nonessential tasks owned by Personal Agent; Android prevents killing other apps.",
+                                "Pause-monitoring command sent. This only stops Personal Agent polling and sensor monitoring; Android prevents killing other apps.",
                                 Toast.LENGTH_LONG
                             ).show()
                         }
