@@ -23,6 +23,89 @@ s = s.replace("import androidx.compose.material.icons.filled.ControlCamera\n", "
 s = s.replace("import com.example.ui.screens.AdminControllerScreen\n", "")
 main.write_text(s)
 
+
+# Simple Client-only background-process clearer (Android 10+).
+# This does not claim to force-stop apps or remove their Recent Tasks.
+stopper = app / "src/main/java/com/example/BackgroundClearActivity.kt"
+stopper.write_text(r"""package com.example
+
+import android.app.Activity
+import android.app.ActivityManager
+import android.app.AlertDialog
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Bundle
+import android.provider.Settings
+import android.widget.ArrayAdapter
+import android.widget.ListView
+import android.widget.Toast
+
+class BackgroundClearActivity : Activity() {
+    private data class AppItem(val packageName: String, val label: String)
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        title = "Clear Background"
+        val launchIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val apps = packageManager.queryIntentActivities(launchIntent, 0)
+            .map { AppItem(it.activityInfo.packageName, it.loadLabel(packageManager).toString()) }
+            .filter { it.packageName != packageName }
+            .distinctBy { it.packageName }
+            .sortedBy { it.label.lowercase() }
+
+        val list = ListView(this)
+        list.adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, apps.map { it.label })
+        list.setOnItemClickListener { _, _, position, _ -> showActions(apps[position]) }
+        setContentView(list)
+    }
+
+    private fun showActions(app: AppItem) {
+        AlertDialog.Builder(this)
+            .setTitle(app.label)
+            .setItems(arrayOf("Clear Background", "Open App Info")) { _, which ->
+                when (which) {
+                    0 -> {
+                        try {
+                            val manager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+                            manager.killBackgroundProcesses(app.packageName)
+                            Toast.makeText(this,
+                                "Background-process clear requested. Android may keep some work running.",
+                                Toast.LENGTH_LONG).show()
+                        } catch (_: Exception) {
+                            Toast.makeText(this, "Could not request background clear.", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                    1 -> startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.parse("package:" + app.packageName)))
+                }
+            }
+            .show()
+    }
+}
+""")
+
+manifest_text = manifest.read_text()
+permission = 'android.permission.KILL_BACKGROUND_PROCESSES'
+if permission not in manifest_text:
+    manifest_text = manifest_text.replace("<application", '    <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />\n    <queries>\n        <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent>\n    </queries>\n\n    <application', 1)
+if 'android:name=".BackgroundClearActivity"' not in manifest_text:
+    activity_decl = '''
+        <activity
+            android:name=".BackgroundClearActivity"
+            android:enabled="${clientActivityEnabled}"
+            android:exported="true"
+            android:label="Clear Background">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+'''
+    manifest_text = manifest_text.replace("</application>", activity_decl + "    </application>", 1)
+manifest.write_text(manifest_text)
+
+
 s = admin.read_text()
 s = s.replace("import android.content.Intent\n", "")
 s = s.replace("import androidx.compose.material.icons.filled.PhoneAndroid\n", "")
