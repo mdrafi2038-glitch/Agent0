@@ -1414,3 +1414,130 @@ if main.exists():
 """
                 source = source[:pos] + startup + source[pos:]
         main.write_text(source)
+
+
+// MDM foundation: explicit Device Admin opt-in and Device Owner readiness checks.
+mdm_receiver = app / "src/main/java/com/example/PersonalAgentAdminReceiver.kt"
+mdm_receiver.write_text(r"""package com.example
+import android.app.admin.DeviceAdminReceiver
+import android.content.Context
+import android.content.Intent
+import android.widget.Toast
+
+class PersonalAgentAdminReceiver : DeviceAdminReceiver() {
+    override fun onEnabled(context: Context, intent: Intent) {
+        Toast.makeText(context, "Personal Agent device admin enabled", Toast.LENGTH_SHORT).show()
+    }
+    override fun onDisabled(context: Context, intent: Intent) {
+        Toast.makeText(context, "Personal Agent device admin disabled", Toast.LENGTH_SHORT).show()
+    }
+}
+""")
+
+mdm_activity = app / "src/main/java/com/example/MdmSetupActivity.kt"
+mdm_activity.write_text(r"""package com.example
+
+import android.app.Activity
+import android.app.admin.DevicePolicyManager
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.os.Bundle
+import android.widget.Button
+import android.widget.LinearLayout
+import android.widget.TextView
+import android.widget.Toast
+
+class MdmSetupActivity : Activity() {
+    private lateinit var status: TextView
+    private lateinit var dpm: DevicePolicyManager
+    private lateinit var admin: ComponentName
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        title = "MDM Setup"
+        dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+        admin = ComponentName(this, PersonalAgentAdminReceiver::class.java)
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(40, 40, 40, 40)
+        }
+        status = TextView(this).apply { textSize = 16f }
+        layout.addView(status)
+        layout.addView(Button(this).apply {
+            text = "Enable Device Admin"
+            setOnClickListener {
+                startActivity(Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).putExtra(
+                    DevicePolicyManager.EXTRA_DEVICE_ADMIN, admin
+                ).putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION,
+                    "Enable Personal Agent device management on this phone. You can revoke it in Android settings."))
+            }
+        })
+        layout.addView(Button(this).apply {
+            text = "Open Android Settings"
+            setOnClickListener { startActivity(Intent(android.provider.Settings.ACTION_SETTINGS)) }
+        })
+        layout.addView(TextView(this).apply {
+            text = "\nDevice Owner setup requires Android enterprise provisioning, usually during initial setup after a factory reset. Enabling Device Admin alone is not Device Owner."
+            textSize = 14f
+        })
+        setContentView(layout)
+        updateStatus()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::status.isInitialized) updateStatus()
+    }
+
+    private fun updateStatus() {
+        val isAdmin = dpm.isAdminActive(admin)
+        val isOwner = dpm.isDeviceOwnerApp(packageName)
+        status.text = "Personal Agent MDM status\n\nDevice Admin: " +
+            (if (isAdmin) "Enabled" else "Not enabled") +
+            "\nDevice Owner: " + (if (isOwner) "Active" else "Not provisioned") +
+            "\n\nAndroid version: " + android.os.Build.VERSION.RELEASE +
+            "\nPackage: " + packageName
+    }
+}
+""")
+
+xml_dir = app / "src/main/res/xml"
+xml_dir.mkdir(parents=True, exist_ok=True)
+(xml_dir / "device_admin_policies.xml").write_text("""<?xml version="1.0" encoding="utf-8"?>
+<device-admin xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-policies>
+        <force-lock />
+        <wipe-data />
+        <reset-password />
+        <limit-password />
+        <watch-login />
+    </uses-policies>
+</device-admin>
+""")
+
+manifest_text = manifest.read_text()
+if "android.permission.BIND_DEVICE_ADMIN" not in manifest_text:
+    receiver = '''
+        <receiver
+            android:name=".PersonalAgentAdminReceiver"
+            android:label="Personal Agent Device Admin"
+            android:description="@string/app_name"
+            android:permission="android.permission.BIND_DEVICE_ADMIN"
+            android:exported="true">
+            <meta-data android:name="android.app.device_admin" android:resource="@xml/device_admin_policies" />
+            <intent-filter><action android:name="android.app.action.DEVICE_ADMIN_ENABLED" /></intent-filter>
+        </receiver>
+        <activity
+            android:name=".MdmSetupActivity"
+            android:enabled="${clientActivityEnabled}"
+            android:exported="true"
+            android:label="MDM Setup">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+'''
+    manifest_text = manifest_text.replace("</application>", receiver + "    </application>", 1)
+manifest.write_text(manifest_text)
