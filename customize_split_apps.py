@@ -496,12 +496,15 @@ if panel_path.exists():
         )
     panel_source = panel_source.replace(
         'if (!snap.exists() || snap.child("revoked").getValue(Boolean::class.java) == true || (!snap.child("approved").getValue(Boolean::class.java).let { it == true } && System.currentTimeMillis() - created > 600000L)) {',
-        'if (!snap.exists() || (snap.child("approved").getValue(Boolean::class.java) != true && System.currentTimeMillis() - created > 600000L)) {'
+        'if (!snap.exists() || snap.child("revoked").getValue(Boolean::class.java) == true || (snap.child("approved").getValue(Boolean::class.java) != true && System.currentTimeMillis() - created > 600000L)) {'
     )
-    panel_source = panel_source.replace(
-        'if (paired && isAdmin) status = "Connected and approved: " + deviceName',
-        '''if (paired && isAdmin) {
-                    status = "Connected and approved: " + deviceName
+    old_status = '''                status = if (paired) "Permanently paired (until owner unpairs): " + deviceName
+                    else if (requested && !isAdmin) "Admin requests pairing. Review and approve below."
+                    else "Waiting for Client owner approval"'''
+    new_status = '''                status = if (paired) "Permanently paired (until owner unpairs): " + deviceName
+                    else if (requested && !isAdmin) "Admin requests pairing. Review and approve below."
+                    else "Waiting for Client owner approval"
+                if (paired && isAdmin) {
                     SecurityRepository.setPairedDevice(
                         ManagedDevice(
                             deviceId = activeToken,
@@ -515,7 +518,8 @@ if panel_path.exists():
                         )
                     )
                 }'''
-    )
+    if old_status in panel_source:
+        panel_source = panel_source.replace(old_status, new_status, 1)
     panel_path.write_text(panel_source)
 
 # Ensure Firebase Auth/Realtime Database dependencies are present even if the ZIP's
