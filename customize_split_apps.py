@@ -1416,7 +1416,7 @@ if main.exists():
         main.write_text(source)
 
 
-// MDM foundation: explicit Device Admin opt-in and Device Owner readiness checks.
+# MDM foundation: explicit Device Admin opt-in and Device Owner readiness checks.
 mdm_receiver = app / "src/main/java/com/example/PersonalAgentAdminReceiver.kt"
 mdm_receiver.write_text(r"""package com.example
 import android.app.admin.DeviceAdminReceiver
