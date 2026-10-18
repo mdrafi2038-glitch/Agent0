@@ -89,20 +89,23 @@ manifest_text = manifest.read_text()
 permission = 'android.permission.KILL_BACKGROUND_PROCESSES'
 if permission not in manifest_text:
     manifest_text = manifest_text.replace("<application", '    <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />\n    <queries>\n        <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent>\n    </queries>\n\n    <application', 1)
+# Keep the background-clear helper inside the Client app, never as a separate launcher app.
 if 'android:name=".BackgroundClearActivity"' not in manifest_text:
     activity_decl = '''
         <activity
             android:name=".BackgroundClearActivity"
             android:enabled="${clientActivityEnabled}"
-            android:exported="true"
-            android:label="Clear Background">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
+            android:exported="false"
+            android:label="Clear Background" />
 '''
     manifest_text = manifest_text.replace("</application>", activity_decl + "    </application>", 1)
+else:
+    manifest_text = re.sub(
+        r'<activity\s+android:name="\.BackgroundClearActivity".*?</activity>',
+        '<activity android:name=".BackgroundClearActivity" android:enabled="${clientActivityEnabled}" android:exported="false" android:label="Clear Background" />',
+        manifest_text,
+        flags=re.S
+    )
 manifest.write_text(manifest_text)
 
 
@@ -1113,7 +1116,7 @@ if admin_screen.exists():
         admin_screen.write_text(src)
 
 
-# Trial hardening: transparent restriction screen and correct paired-token routing.
+# Managed restriction screen: block ordinary Back navigation; preserve Android system/emergency controls.
 lock_path = app / "src/main/java/com/example/lock/LockActivity.kt"
 if lock_path.exists():
     lock_path.write_text(r"""package com.example.lock
@@ -1159,6 +1162,13 @@ import com.example.receiver.AgentDeviceAdminReceiver
 import com.example.ui.theme.MyApplicationTheme
 
 class LockActivity : ComponentActivity() {
+    // Block ordinary Back navigation while the restriction screen is visible.
+    // This is not a substitute for managed-device kiosk policy and does not disable emergency/system controls.
+    @Deprecated("Deprecated in Android; retained for compatibility")
+    override fun onBackPressed() {
+        Toast.makeText(this, "This screen is managed by Personal Agent. Contact your administrator to unlock.", Toast.LENGTH_SHORT).show()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
