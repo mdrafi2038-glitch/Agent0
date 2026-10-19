@@ -54,10 +54,35 @@ class BackgroundClearActivity : Activity() {
             .distinctBy { it.packageName }
             .sortedBy { it.label.lowercase() }
 
+        val prefs = getSharedPreferences("background_clear_prefs", Context.MODE_PRIVATE)
+        val savedPackage = prefs.getString("selected_package", "") ?: ""
         val list = ListView(this)
-        list.adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, apps.map { it.label })
-        list.setOnItemClickListener { _, _, position, _ -> showActions(apps[position]) }
-        setContentView(list)
+        list.choiceMode = ListView.CHOICE_MODE_SINGLE
+        list.adapter = ArrayAdapter(this, android.R.layout.simple_list_item_single_choice, apps.map { it.label + if (it.packageName == savedPackage) "  ✓ Selected" else "" })
+        val savedIndex = apps.indexOfFirst { it.packageName == savedPackage }
+        if (savedIndex >= 0) list.setItemChecked(savedIndex, true)
+        list.setOnItemClickListener { _, _, position, _ ->
+            val chosen = apps[position]
+            prefs.edit().putString("selected_package", chosen.packageName).putString("selected_label", chosen.label).apply()
+            Toast.makeText(this, "Saved selection: " + chosen.label, Toast.LENGTH_SHORT).show()
+            list.adapter = ArrayAdapter(this, android.R.layout.simple_list_item_single_choice, apps.map { it.label + if (it.packageName == chosen.packageName) "  ✓ Selected" else "" })
+            list.setItemChecked(position, true)
+        }
+        val clear = android.widget.Button(this).apply {
+            text = "Request background clear for selected app"
+            setOnClickListener {
+                val pkg = prefs.getString("selected_package", "") ?: ""
+                val target = apps.firstOrNull { it.packageName == pkg }
+                if (target == null) Toast.makeText(this@BackgroundClearActivity, "Select an app first", Toast.LENGTH_SHORT).show()
+                else showActions(target)
+            }
+        }
+        val layout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            addView(clear)
+            addView(list, android.widget.LinearLayout.LayoutParams(-1, 0, 1f))
+        }
+        setContentView(layout)
     }
 
     private fun showActions(app: AppItem) {
@@ -1482,6 +1507,10 @@ class MdmSetupActivity : Activity() {
                 ).putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION,
                     "Enable Personal Agent device management on this phone. You can revoke it in Android settings."))
             }
+        })
+        layout.addView(Button(this).apply {
+            text = "Clear Background (choose app)"
+            setOnClickListener { startActivity(Intent(this@MdmSetupActivity, BackgroundClearActivity::class.java)) }
         })
         layout.addView(Button(this).apply {
             text = "Open Android Settings"
