@@ -563,6 +563,12 @@ for screen_path, is_admin in [
         ".read": "auth != null",
         ".write": "auth != null"
       }
+    },
+    "commands": {
+      "$token": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
     }
   }
 }
