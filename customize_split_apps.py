@@ -47,10 +47,10 @@ class BackgroundClearActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         title = "Clear Background"
-        val launchIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        val apps = packageManager.queryIntentActivities(launchIntent, 0)
-            .map { AppItem(it.activityInfo.packageName, it.loadLabel(packageManager).toString()) }
+        // QUERY_ALL_PACKAGES also exposes installed apps without launcher icons.
+        val apps = packageManager.getInstalledApplications(0)
             .filter { it.packageName != packageName }
+            .map { AppItem(it.packageName, packageManager.getApplicationLabel(it).toString()) }
             .distinctBy { it.packageName }
             .sortedBy { it.label.lowercase() }
 
@@ -112,6 +112,9 @@ class BackgroundClearActivity : Activity() {
 
 manifest_text = manifest.read_text()
 permission = 'android.permission.KILL_BACKGROUND_PROCESSES'
+all_apps_permission = 'android.permission.QUERY_ALL_PACKAGES'
+if all_apps_permission not in manifest_text:
+    manifest_text = manifest_text.replace("<application", '    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />\n    <application', 1)
 if permission not in manifest_text:
     manifest_text = manifest_text.replace("<application", '    <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />\n    <queries>\n        <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent>\n    </queries>\n\n    <application', 1)
 # Keep the background-clear helper inside the Client app, never as a separate launcher app.
