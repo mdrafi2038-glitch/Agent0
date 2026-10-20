@@ -98,15 +98,12 @@ class BackgroundClearActivity : Activity() {
                     Toast.makeText(this@BackgroundClearActivity, "Select an app first", Toast.LENGTH_SHORT).show()
                 } else {
                     try {
-                        // Android 14+ restricts apps from killing other apps' processes.
-                        // Open the system-owned App Info page so the phone owner can tap Force stop.
-                        startActivity(
-                            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                                .setData(Uri.parse("package:" + target.packageName))
-                        )
+                        // Match Build 64 behavior: request clearing the selected app's background process only.
+                        val manager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+                        manager.killBackgroundProcesses(target.packageName)
                         Toast.makeText(
                             this@BackgroundClearActivity,
-                            "Tap Force stop on the Android App info screen to stop " + target.label + ".",
+                            "Background clear requested for " + target.label,
                             Toast.LENGTH_LONG
                         ).show()
                     } catch (_: Exception) {
@@ -837,14 +834,6 @@ if service_path.exists():
                             ref.child(id).updateChildren(mapOf(
                                 "status" to "FAILED",
                                 "resultSummary" to "No valid target app is selected on Client",
-                                "completedAt" to System.currentTimeMillis()
-                            ))
-                            return
-                        }
-                        if (android.os.Build.VERSION.SDK_INT >= 34) {
-                            ref.child(id).updateChildren(mapOf(
-                                "status" to "UNSUPPORTED_ANDROID_VERSION",
-                                "resultSummary" to "Android 14+ prevents ordinary apps from clearing another app's background processes: " + pkg,
                                 "completedAt" to System.currentTimeMillis()
                             ))
                             return
