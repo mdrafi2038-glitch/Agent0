@@ -1042,7 +1042,7 @@ security_state = app / "src/main/java/com/example/model/SecurityState.kt"
 if security_state.exists():
     src = security_state.read_text()
     if "CLEAR_BACKGROUND_PROCESSES" not in src:
-        src = src.replace("    POWER_OFF\n}", "    POWER_OFF,\n    CLEAR_BACKGROUND_PROCESSES\n}")
+        src = src.replace("    POWER_OFF\n}", "    POWER_OFF\n}")
         security_state.write_text(src)
 
 service_path = app / "src/main/java/com/example/service/AgentService.kt"
@@ -1080,71 +1080,19 @@ if service_path.exists():
         )
         src = src.replace(
             'val allowed = setOf("TRIGGER_SIREN", "STOP_SIREN", "REQUEST_DIAGNOSTICS", "LOCK_DEVICE")',
-            'val allowed = setOf("TRIGGER_SIREN", "STOP_SIREN", "REQUEST_DIAGNOSTICS", "LOCK_DEVICE", "CLEAR_BACKGROUND_PROCESSES")'
+            'val allowed = setOf("TRIGGER_SIREN", "STOP_SIREN", "REQUEST_DIAGNOSTICS", "LOCK_DEVICE")'
         )
         service_path.write_text(src)
 
 handler_path = app / "src/main/java/com/example/manager/AgentCommandHandler.kt"
 if handler_path.exists():
     src = handler_path.read_text()
-    if "CommandType.CLEAR_BACKGROUND_PROCESSES ->" not in src:
-        marker = "                CommandType.POWER_OFF -> {"
-        branch = '''                CommandType.CLEAR_BACKGROUND_PROCESSES -> {
-                    val result = (context as? com.example.service.AgentService)
-                        ?.clearNonessentialBackgroundTasks()
-                        ?: "Background-task cleanup is available only while the Client AgentService is running."
-                    SecurityRepository.logEvent(
-                        title = "Client Monitoring Paused",
-                        description = result,
-                        severity = EventSeverity.INFO,
-                        type = EventType.ADMIN_STATUS
-                    )
-                    SecurityRepository.updateCommandStatus(
-                        command.id,
-                        CommandStatus.EXECUTED,
-                        result
-                    )
-                }
 
-'''
-        if marker in src:
-            src = src.replace(marker, branch + marker, 1)
-        handler_path.write_text(src)
 
 admin_screen = app / "src/main/java/com/example/ui/screens/AdminControllerScreen.kt"
 if admin_screen.exists():
     src = admin_screen.read_text()
-    if "remote_action_clear_background" not in src:
-        marker = "                // Camera Policy Toggle"
-        ui = '''                // Clear nonessential background work on the selected Client.
-                RemoteCommandBtn(
-                    title = "Pause Client Monitoring",
-                    desc = "Stop Personal Agent polling and sensor monitoring",
-                    icon = Icons.Default.DeleteForever,
-                    accentColor = CyberWarningAmber,
-                    modifier = Modifier.fillMaxWidth().testTag("remote_action_clear_background"),
-                    onClick = {
-                        if (selectedDeviceId.isBlank()) {
-                            Toast.makeText(context, "Select a paired Client first", Toast.LENGTH_SHORT).show()
-                        } else {
-                            val cmd = AdminCommand(
-                                type = CommandType.CLEAR_BACKGROUND_PROCESSES,
-                                targetDeviceId = selectedDeviceId
-                            )
-                            SecurityRepository.addCommand(cmd)
-                            Toast.makeText(
-                                context,
-                                "Pause-monitoring command sent. This only stops Personal Agent polling and sensor monitoring; Android prevents killing other apps.",
-                                Toast.LENGTH_LONG
-                            ).show()
-                        }
-                    }
-                )
 
-'''
-        if marker in src:
-            src = src.replace(marker, ui + marker, 1)
-        admin_screen.write_text(src)
 
 
 # Managed restriction screen: block ordinary Back navigation; preserve Android system/emergency controls.
