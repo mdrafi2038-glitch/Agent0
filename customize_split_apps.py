@@ -23,9 +23,12 @@ s = s.replace("import androidx.compose.material.icons.filled.ControlCamera\n", "
 s = s.replace("import com.example.ui.screens.AdminControllerScreen\n", "")
 # Add a visible Client entry point to the in-app background process picker.
 marker = "                    // Quick Siren Button in Top Bar"
-button = """                    Button(
+button = """                    val backgroundClearContext = androidx.compose.ui.platform.LocalContext.current
+                    androidx.compose.material3.Button(
                         onClick = {
-                            startActivity(android.content.Intent(this@MainActivity, BackgroundClearActivity::class.java))
+                            backgroundClearContext.startActivity(
+                                android.content.Intent(backgroundClearContext, BackgroundClearActivity::class.java)
+                            )
                         }
                     ) { Text("Clear Background") }
                     // Quick Siren Button in Top Bar"""
