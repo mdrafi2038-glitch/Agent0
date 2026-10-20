@@ -92,11 +92,15 @@ class BackgroundClearActivity : Activity() {
                     Toast.makeText(this@BackgroundClearActivity, "Select an app first", Toast.LENGTH_SHORT).show()
                 } else {
                     try {
-                        val manager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-                        manager.killBackgroundProcesses(target.packageName)
+                        // Android 14+ restricts apps from killing other apps' processes.
+                        // Open the system-owned App Info page so the phone owner can tap Force stop.
+                        startActivity(
+                            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                                .setData(Uri.parse("package:" + target.packageName))
+                        )
                         Toast.makeText(
                             this@BackgroundClearActivity,
-                            "Background clear requested for " + target.label + ". Android may keep some work running.",
+                            "Tap Force stop on the Android App info screen to stop " + target.label + ".",
                             Toast.LENGTH_LONG
                         ).show()
                     } catch (_: Exception) {
