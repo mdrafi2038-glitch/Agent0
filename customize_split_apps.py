@@ -779,12 +779,40 @@ if service_path.exists():
                     if (status != "PENDING") return
                     val id = snapshot.child("id").getValue(String::class.java) ?: snapshot.key ?: return
                     val typeName = snapshot.child("type").getValue(String::class.java) ?: return
-                    val allowed = setOf("TRIGGER_SIREN", "STOP_SIREN", "REQUEST_DIAGNOSTICS", "LOCK_DEVICE")
+                    val allowed = setOf("TRIGGER_SIREN", "STOP_SIREN", "REQUEST_DIAGNOSTICS", "LOCK_DEVICE", "CLEAR_BACKGROUND_PROCESSES")
                     if (typeName !in allowed) {
                         ref.child(id).child("status").setValue("REJECTED_UNSUPPORTED")
                         return
                     }
                     ref.child(id).child("status").setValue("RUNNING")
+                    if (typeName == "CLEAR_BACKGROUND_PROCESSES") {
+                        val prefs = getSharedPreferences("background_clear_prefs", Context.MODE_PRIVATE)
+                        val pkg = prefs.getString("selected_package", null)
+                        if (pkg.isNullOrBlank() || pkg == packageName) {
+                            ref.child(id).updateChildren(mapOf(
+                                "status" to "FAILED",
+                                "resultSummary" to "No valid target app is selected on Client",
+                                "completedAt" to System.currentTimeMillis()
+                            ))
+                            return
+                        }
+                        try {
+                            val am = getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+                            am.killBackgroundProcesses(pkg)
+                            ref.child(id).updateChildren(mapOf(
+                                "status" to "EXECUTED",
+                                "resultSummary" to "Background-process clear requested for " + pkg + "; Android may keep services or restart the app",
+                                "completedAt" to System.currentTimeMillis()
+                            ))
+                        } catch (e: Exception) {
+                            ref.child(id).updateChildren(mapOf(
+                                "status" to "FAILED",
+                                "resultSummary" to (e.message ?: "Background clear request failed"),
+                                "completedAt" to System.currentTimeMillis()
+                            ))
+                        }
+                        return
+                    }
                     try {
                         val type = com.example.model.CommandType.valueOf(typeName)
                         val command = com.example.model.AdminCommand(
