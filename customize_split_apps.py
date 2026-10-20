@@ -809,7 +809,7 @@ if service_path.exists():
         val token = getSharedPreferences("agent_pairing", Context.MODE_PRIVATE)
             .getString("client_token", null)?.takeIf { it.matches(Regex("^[A-HJ-NP-Z2-9]{8}$")) } ?: return
         try {
-            val ref = FirebaseDatabase.getInstance().reference.child("commands").child(token)
+            val ref = FirebaseDatabase.getInstance("https://private-agent-98752-default-rtdb.firebaseio.com/").reference.child("commands").child(token)
             remoteCommandRef = ref
             val listener = object : ChildEventListener {
                 override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
