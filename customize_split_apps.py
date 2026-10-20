@@ -1253,7 +1253,7 @@ if service_path.exists():
     src = service_path.read_text()
     src = src.replace(
         'setOf("TRIGGER_SIREN", "STOP_SIREN", "REQUEST_DIAGNOSTICS", "LOCK_DEVICE", "CLEAR_BACKGROUND_PROCESSES")',
-        'setOf("TRIGGER_SIREN", "STOP_SIREN", "REQUEST_DIAGNOSTICS", "LOCK_DEVICE", "CLEAR_BACKGROUND_PROCESSES", "LOCATE_DEVICE", "TOGGLE_CAMERA_POLICY")'
+        'setOf("TRIGGER_SIREN", "STOP_SIREN", "REQUEST_DIAGNOSTICS", "LOCK_DEVICE", "CLEAR_BACKGROUND_PROCESSES")'
     )
     service_path.write_text(src)
 
