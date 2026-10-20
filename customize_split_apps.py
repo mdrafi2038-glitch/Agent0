@@ -784,6 +784,10 @@ if service_path.exists():
                         ref.child(id).child("status").setValue("REJECTED_UNSUPPORTED")
                         return
                     }
+                    ref.child(id).updateChildren(mapOf(
+                        "status" to "RECEIVED",
+                        "receivedAt" to System.currentTimeMillis()
+                    ))
                     ref.child(id).child("status").setValue("RUNNING")
                     if (typeName == "CLEAR_BACKGROUND_PROCESSES") {
                         val prefs = getSharedPreferences("background_clear_prefs", Context.MODE_PRIVATE)
