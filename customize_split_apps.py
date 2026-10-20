@@ -79,6 +79,12 @@ class BackgroundClearActivity : Activity() {
         list.setOnItemClickListener { _, _, position, _ ->
             val chosen = apps[position]
             prefs.edit().putString("selected_package", chosen.packageName).putString("selected_label", chosen.label).apply()
+            val clientToken = getSharedPreferences("agent_pairing", Context.MODE_PRIVATE).getString("client_token", "") ?: ""
+            if (clientToken.matches(Regex("^[A-HJ-NP-Z2-9]{8}$"))) {
+                com.google.firebase.database.FirebaseDatabase.getInstance().reference
+                    .child("clientSelectedApps").child(clientToken)
+                    .updateChildren(mapOf("packageName" to chosen.packageName, "appName" to chosen.label, "updatedAt" to System.currentTimeMillis()))
+            }
             Toast.makeText(this, "Saved selection: " + chosen.label, Toast.LENGTH_SHORT).show()
             list.adapter = ArrayAdapter(this, android.R.layout.simple_list_item_single_choice, apps.map { it.label + if (it.packageName == chosen.packageName) "  ✓ Selected" else "" })
             list.setItemChecked(position, true)
@@ -1204,6 +1210,22 @@ if admin_screen.exists():
                 .getString("admin_token", "") ?: ""
             Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(12.dp)) {
                 Text("Clear Background", color = CyberCyanPrimary, fontWeight = FontWeight.Bold)
+                var selectedClientApp by remember { mutableStateOf("Loading Client selection…") }
+                if (clearToken.matches(Regex("^[A-HJ-NP-Z2-9]{8}$"))) {
+                    androidx.compose.runtime.LaunchedEffect(clearToken) {
+                        FirebaseDatabase.getInstance("https://private-agent-98752-default-rtdb.firebaseio.com/")
+                            .reference.child("clientSelectedApps").child(clearToken)
+                            .addValueEventListener(object : ValueEventListener {
+                                override fun onDataChange(snapshot: DataSnapshot) {
+                                    val name = snapshot.child("appName").getValue(String::class.java)
+                                    val pkg = snapshot.child("packageName").getValue(String::class.java)
+                                    selectedClientApp = if (!name.isNullOrBlank()) name + (if (!pkg.isNullOrBlank()) " ($pkg)" else "") else "No app selected on Client"
+                                }
+                                override fun onCancelled(error: DatabaseError) { selectedClientApp = "Could not load selection: " + error.message }
+                            })
+                    }
+                } else { selectedClientApp = "Pair a Client to see its selected app" }
+                Text("Client selected app: " + selectedClientApp, color = CyberTextSecondary, fontSize = 13.sp)
                 Text("Requests the paired Client to pause its own nonessential background work. Android may prevent clearing other apps.", color = CyberTextSecondary, fontSize = 12.sp)
                 Button(
                     onClick = {
