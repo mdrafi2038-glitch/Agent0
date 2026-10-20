@@ -1138,6 +1138,84 @@ if admin_screen.exists():
 
 
 
+
+# INJECT ADMIN CLEAR BACKGROUND COMMAND PANEL
+# Add an explicit Admin action and live Firebase result status to the generated Admin screen.
+admin_screen = app / "src/main/java/com/example/ui/screens/AdminControllerScreen.kt"
+if admin_screen.exists():
+    src = admin_screen.read_text()
+    if "ADMIN_CLEAR_BACKGROUND_COMMAND_PANEL" not in src:
+        imports = [
+            "import android.content.Context",
+            "import com.google.firebase.database.DataSnapshot",
+            "import com.google.firebase.database.DatabaseError",
+            "import com.google.firebase.database.ValueEventListener",
+            "import com.google.firebase.database.FirebaseDatabase",
+            "import androidx.compose.material3.Button",
+            "import androidx.compose.material3.Text",
+            "import androidx.compose.runtime.mutableStateOf",
+            "import androidx.compose.runtime.getValue",
+            "import androidx.compose.runtime.setValue",
+        ]
+        for imp in imports:
+            if imp not in src:
+                src = src.replace("package com.example.ui.screens\n", "package com.example.ui.screens\n\n" + imp + "\n", 1)
+        # Put a self-contained panel at the beginning of the screen's LazyColumn.
+        lazy_start = src.find("LazyColumn(")
+        lazy_body = src.find(") {", lazy_start)
+        if lazy_start < 0 or lazy_body < 0:
+            raise SystemExit("AdminControllerScreen: could not find LazyColumn body to add Clear Background button")
+        insertion = r"""
+        item {
+            var clearCommandStatus by remember { mutableStateOf("Choose a paired Client, then send a request.") }
+            val clearToken = context.getSharedPreferences("agent_pairing", Context.MODE_PRIVATE)
+                .getString("admin_token", "") ?: ""
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+                Text("Clear Background", color = CyberCyanPrimary, fontWeight = FontWeight.Bold)
+                Text("Requests the paired Client to pause its own nonessential background work. Android may prevent clearing other apps.", color = CyberTextSecondary, fontSize = 12.sp)
+                Button(
+                    onClick = {
+                        if (!clearToken.matches(Regex("^[A-HJ-NP-Z2-9]{8}$"))) {
+                            clearCommandStatus = "Pair a Client first; no valid Client code is saved."
+                        } else {
+                            val commandId = java.util.UUID.randomUUID().toString()
+                            val commandRef = FirebaseDatabase.getInstance("https://private-agent-98752-default-rtdb.firebaseio.com/")
+                                .reference.child("commands").child(clearToken).child(commandId)
+                            clearCommandStatus = "Sending command…"
+                            commandRef.setValue(mapOf(
+                                "id" to commandId,
+                                "type" to "CLEAR_BACKGROUND_PROCESSES",
+                                "targetDeviceId" to clearToken,
+                                "issuedAt" to System.currentTimeMillis(),
+                                "status" to "PENDING"
+                            )).addOnSuccessListener {
+                                clearCommandStatus = "Sent. Waiting for Client result…"
+                                commandRef.addValueEventListener(object : ValueEventListener {
+                                    override fun onDataChange(snapshot: DataSnapshot) {
+                                        val status = snapshot.child("status").getValue(String::class.java) ?: "PENDING"
+                                        val result = snapshot.child("resultSummary").getValue(String::class.java) ?: ""
+                                        clearCommandStatus = if (result.isBlank()) "Command status: " + status else "Command status: " + status + "\n" + result
+                                    }
+                                    override fun onCancelled(error: DatabaseError) {
+                                        clearCommandStatus = "Could not read command result: " + error.message
+                                    }
+                                })
+                            }.addOnFailureListener { error ->
+                                clearCommandStatus = "Send failed: " + (error.message ?: "Firebase write denied")
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Clear Background on Client") }
+                Text(clearCommandStatus, color = CyberTextSecondary, fontSize = 12.sp)
+            }
+        }
+"""
+        src = src[:lazy_body + 3] + insertion + src[lazy_body + 3:]
+        src = src.replace("ADMIN_CLEAR_BACKGROUND_COMMAND_PANEL", "ADMIN_CLEAR_BACKGROUND_COMMAND_PANEL")
+        admin_screen.write_text(src)
+
+
 # Managed restriction screen: block ordinary Back navigation; preserve Android system/emergency controls.
 lock_path = app / "src/main/java/com/example/lock/LockActivity.kt"
 if lock_path.exists():
