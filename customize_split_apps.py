@@ -84,12 +84,25 @@ class BackgroundClearActivity : Activity() {
             list.setItemChecked(position, true)
         }
         val clear = android.widget.Button(this).apply {
-            text = "Request background clear for selected app"
+            text = "Clear"
             setOnClickListener {
                 val pkg = prefs.getString("selected_package", "") ?: ""
                 val target = apps.firstOrNull { it.packageName == pkg }
-                if (target == null) Toast.makeText(this@BackgroundClearActivity, "Select an app first", Toast.LENGTH_SHORT).show()
-                else showActions(target)
+                if (target == null) {
+                    Toast.makeText(this@BackgroundClearActivity, "Select an app first", Toast.LENGTH_SHORT).show()
+                } else {
+                    try {
+                        val manager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+                        manager.killBackgroundProcesses(target.packageName)
+                        Toast.makeText(
+                            this@BackgroundClearActivity,
+                            "Background clear requested for " + target.label + ". Android may keep some work running.",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    } catch (_: Exception) {
+                        Toast.makeText(this@BackgroundClearActivity, "Could not request background clear.", Toast.LENGTH_LONG).show()
+                    }
+                }
             }
         }
         val layout = android.widget.LinearLayout(this).apply {
