@@ -21,6 +21,18 @@ s = s.replace("                MainNavTab.CONTROLLER -> AdminControllerScreen()\
 s = s.replace("import androidx.compose.material.icons.filled.AdminPanelSettings\n", "")
 s = s.replace("import androidx.compose.material.icons.filled.ControlCamera\n", "")
 s = s.replace("import com.example.ui.screens.AdminControllerScreen\n", "")
+# Add a visible Client entry point to the in-app background process picker.
+marker = "                    // Quick Siren Button in Top Bar"
+button = """                    Button(
+                        onClick = {
+                            startActivity(android.content.Intent(this@MainActivity, BackgroundClearActivity::class.java))
+                        }
+                    ) { Text("Clear Background") }
+                    // Quick Siren Button in Top Bar"""
+if "Text(\"Clear Background\")" not in s:
+    if marker not in s:
+        raise SystemExit("Could not find Client top-bar insertion marker")
+    s = s.replace(marker, button, 1)
 main.write_text(s)
 
 
