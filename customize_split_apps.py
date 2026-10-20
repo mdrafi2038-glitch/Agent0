@@ -803,12 +803,20 @@ if service_path.exists():
                             ))
                             return
                         }
+                        if (android.os.Build.VERSION.SDK_INT >= 34) {
+                            ref.child(id).updateChildren(mapOf(
+                                "status" to "UNSUPPORTED_ANDROID_VERSION",
+                                "resultSummary" to "Android 14+ prevents ordinary apps from clearing another app's background processes: " + pkg,
+                                "completedAt" to System.currentTimeMillis()
+                            ))
+                            return
+                        }
                         try {
                             val am = getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
                             am.killBackgroundProcesses(pkg)
                             ref.child(id).updateChildren(mapOf(
-                                "status" to "EXECUTED",
-                                "resultSummary" to "Background-process clear requested for " + pkg + "; Android may keep services or restart the app",
+                                "status" to "REQUESTED",
+                                "resultSummary" to "Background-process clear requested for " + pkg + "; this is not Force Stop and the app may restart",
                                 "completedAt" to System.currentTimeMillis()
                             ))
                         } catch (e: Exception) {
