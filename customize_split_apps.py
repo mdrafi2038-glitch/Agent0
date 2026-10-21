@@ -810,13 +810,22 @@ if service_path.exists():
             .getString("client_token", null)?.takeIf { it.matches(Regex("^[A-HJ-NP-Z2-9]{8}$")) } ?: return
         try {
             val ref = FirebaseDatabase.getInstance("https://private-agent-98752-default-rtdb.firebaseio.com/").reference.child("commands").child(token)
+            ref.keepSynced(true)
             remoteCommandRef = ref
             val listener = object : ChildEventListener {
                 override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
                     val status = snapshot.child("status").getValue(String::class.java) ?: "PENDING"
                     if (status != "PENDING") return
                     val id = snapshot.child("id").getValue(String::class.java) ?: snapshot.key ?: return
-                    val typeName = snapshot.child("type").getValue(String::class.java) ?: return
+                    val typeName = snapshot.child("type").getValue(String::class.java) ?: run {
+                        ref.child(id).updateChildren(mapOf("status" to "FAILED", "resultSummary" to "Command type missing", "completedAt" to System.currentTimeMillis()))
+                        return
+                    }
+                    val target = snapshot.child("targetDeviceId").getValue(String::class.java)
+                    if (!target.isNullOrBlank() && target != token) {
+                        ref.child(id).updateChildren(mapOf("status" to "REJECTED_WRONG_CLIENT", "resultSummary" to "Command target does not match this Client token", "completedAt" to System.currentTimeMillis()))
+                        return
+                    }
                     val allowed = setOf("TRIGGER_SIREN", "STOP_SIREN", "REQUEST_DIAGNOSTICS", "LOCK_DEVICE", "CLEAR_BACKGROUND_PROCESSES")
                     if (typeName !in allowed) {
                         ref.child(id).child("status").setValue("REJECTED_UNSUPPORTED")
@@ -915,7 +924,7 @@ if security_path.exists():
         // remote command types are rejected by the Client service.
         if (command.targetDeviceId.matches(Regex("^[A-HJ-NP-Z2-9]{8}$"))) {
             try {
-                com.google.firebase.database.FirebaseDatabase.getInstance().reference
+                com.google.firebase.database.FirebaseDatabase.getInstance("https://private-agent-98752-default-rtdb.firebaseio.com/").reference
                     .child("commands").child(command.targetDeviceId).child(command.id)
                     .setValue(mapOf(
                         "id" to command.id,
