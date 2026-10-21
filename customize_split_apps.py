@@ -1709,3 +1709,15 @@ if "android.permission.BIND_DEVICE_ADMIN" not in manifest_text:
 '''
     manifest_text = manifest_text.replace("</application>", receiver + "    </application>", 1)
 manifest.write_text(manifest_text)
+
+
+# Keep every Firebase Realtime Database call on the same configured instance.
+# Pairing/presence and the remote command queue must share the same database;
+# mixing getInstance() with an explicit URL can silently split them across databases.
+for kotlin_file in app.rglob("*.kt"):
+    source = kotlin_file.read_text()
+    source = source.replace(
+        'FirebaseDatabase.getInstance()',
+        'FirebaseDatabase.getInstance("https://private-agent-98752-default-rtdb.firebaseio.com/")'
+    )
+    kotlin_file.write_text(source)
