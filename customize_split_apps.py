@@ -81,7 +81,7 @@ class BackgroundClearActivity : Activity() {
             prefs.edit().putString("selected_package", chosen.packageName).putString("selected_label", chosen.label).apply()
             val clientToken = getSharedPreferences("agent_pairing", Context.MODE_PRIVATE).getString("client_token", "") ?: ""
             if (clientToken.matches(Regex("^[A-HJ-NP-Z2-9]{8}$"))) {
-                com.google.firebase.database.FirebaseDatabase.getInstance().reference
+                com.google.firebase.database.FirebaseDatabase.getInstance("https://private-agent-98752-default-rtdb.firebaseio.com/").reference
                     .child("clientSelectedApps").child(clientToken)
                     .updateChildren(mapOf("packageName" to chosen.packageName, "appName" to chosen.label, "updatedAt" to System.currentTimeMillis()))
             }
@@ -1225,6 +1225,17 @@ if admin_screen.exists():
                             val commandRef = FirebaseDatabase.getInstance("https://private-agent-98752-default-rtdb.firebaseio.com/")
                                 .reference.child("commands").child(clearToken).child(commandId)
                             clearCommandStatus = "Sending command…"
+                            val resultListener = object : ValueEventListener {
+                                override fun onDataChange(snapshot: DataSnapshot) {
+                                    val status = snapshot.child("status").getValue(String::class.java) ?: "PENDING"
+                                    val result = snapshot.child("resultSummary").getValue(String::class.java) ?: ""
+                                    clearCommandStatus = if (result.isBlank()) "Command status: " + status else "Command status: " + status + "\n" + result
+                                }
+                                override fun onCancelled(error: DatabaseError) {
+                                    clearCommandStatus = "Could not read command result: " + error.message
+                                }
+                            }
+                            commandRef.addValueEventListener(resultListener)
                             commandRef.setValue(mapOf(
                                 "id" to commandId,
                                 "type" to "CLEAR_BACKGROUND_PROCESSES",
@@ -1233,17 +1244,8 @@ if admin_screen.exists():
                                 "status" to "PENDING"
                             )).addOnSuccessListener {
                                 clearCommandStatus = "Sent. Waiting for Client result…"
-                                commandRef.addValueEventListener(object : ValueEventListener {
-                                    override fun onDataChange(snapshot: DataSnapshot) {
-                                        val status = snapshot.child("status").getValue(String::class.java) ?: "PENDING"
-                                        val result = snapshot.child("resultSummary").getValue(String::class.java) ?: ""
-                                        clearCommandStatus = if (result.isBlank()) "Command status: " + status else "Command status: " + status + "\n" + result
-                                    }
-                                    override fun onCancelled(error: DatabaseError) {
-                                        clearCommandStatus = "Could not read command result: " + error.message
-                                    }
-                                })
                             }.addOnFailureListener { error ->
+                                commandRef.removeEventListener(resultListener)
                                 clearCommandStatus = "Send failed: " + (error.message ?: "Firebase write denied")
                             }
                         }
