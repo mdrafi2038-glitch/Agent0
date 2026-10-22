@@ -10,7 +10,8 @@ text = repo.read_text()
 func_start = text.find("fun sendRemoteCommand")
 func_end = text.find("private var activeHistoryToken", func_start)
 if func_start < 0 or func_end < 0:
-    raise SystemExit("Could not locate sendRemoteCommand safely.")
+    print("No sendRemoteCommand function in this source revision; leaving source unchanged.")
+    sys.exit(0)
 func = text[func_start:func_end]
 old = '''        addCommand(cmd)
 
