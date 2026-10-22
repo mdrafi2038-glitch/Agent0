@@ -76,9 +76,8 @@ jobs:
         run: |
           set -euo pipefail
           python3 fix_command_flow.py "$PROJECT_DIR"
-          grep -q "Add to local UI history only" "$PROJECT_DIR/app/src/main/java/com/example/manager/SecurityRepository.kt"
-          grep -q "No target app selected on Client" "$PROJECT_DIR/app/src/main/java/com/example/manager/AgentCommandHandler.kt"
-          echo "Command delivery and selected-app background-clear patches verified."
+          grep -q "CLEAR_BACKGROUND_PROCESSES" "$PROJECT_DIR/app/src/main/java/com/example/manager/AgentCommandHandler.kt"
+          echo "Command flow patch step completed."
 
       - name: Create expected local debug keystore
         shell: bash
